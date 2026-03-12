@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+.env
+.venv
+*.xlsx
+*.xls
+!sample/*.xlsx
+!sample/*.xls
+.DS_Store
+tr-fitting-xls/
