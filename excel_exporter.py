@@ -68,6 +68,9 @@ def _figure_to_xl_image(fig: Figure, width_px: int = 680, height_px: int = 480) 
     return img
 
 
+import output_curve as oc_module
+import transfer_curve as tc_module
+
 # ───────────────────────── Transfer Curve 내보내기 ─────────────────────────
 
 def export_transfer_curve(
@@ -75,16 +78,11 @@ def export_transfer_curve(
     fig: Figure,
     save_path: str,
     log_scale: bool = True,
+    xlim: tuple = None,
+    ylim: tuple = None
 ):
     """
     Transfer Curve 결과를 엑셀로 저장.
-
-    Parameters
-    ----------
-    grouped_data : dict   {vd: {'x': Vg배열, 'y': Id배열}}
-    fig : Figure          미리 생성된 matplotlib Figure
-    save_path : str       저장할 .xlsx 경로
-    log_scale : bool      Y축 로그 여부 (시트 제목에 표시)
     """
     wb = Workbook()
 
@@ -123,7 +121,7 @@ def export_transfer_curve(
         col += 2
 
     # 데이터 행
-    max_len = max(len(d["x"]) for d in grouped_data.values())
+    max_len = max(len(d["x"]) for d in grouped_data.values()) if grouped_data else 0
     for row_i in range(max_len):
         excel_row = row_i + 3
         is_odd = (row_i % 2 == 0)
@@ -163,9 +161,18 @@ def export_transfer_curve(
                 font=Font(name="Calibri", italic=True, size=10, color="555555"),
                 alignment=_CENTER)
 
-    xl_img = _figure_to_xl_image(fig, width_px=700, height_px=500)
+    # UI의 fig를 참조하면 빈 화면이 될 수 있으므로, 독립적으로 새로 랜더링
+    export_fig = tc_module.create_transfer_figure(
+        grouped_data, log_scale=log_scale,
+        title="TFT Transfer Curve  (Vgs - Id)",
+        xlim=xlim, ylim=ylim
+    )
+    xl_img = _figure_to_xl_image(export_fig, width_px=700, height_px=500)
+    plt.close(export_fig)
     ws_chart.add_image(xl_img, "B4")
 
+    if not save_path.endswith(".xlsx"):
+        save_path += ".xlsx"
     wb.save(save_path)
 
 
@@ -176,16 +183,11 @@ def export_output_curve(
     fig: Figure,
     save_path: str,
     log_scale: bool = False,
+    xlim: tuple = None,
+    ylim: tuple = None
 ):
     """
     Output Curve 결과를 엑셀로 저장.
-
-    Parameters
-    ----------
-    grouped_data : dict   {vg: {'x': Vd배열, 'y': Id배열}}
-    fig : Figure          미리 생성된 matplotlib Figure
-    save_path : str       저장할 .xlsx 경로
-    log_scale : bool      Y축 로그 여부
     """
     wb = Workbook()
 
@@ -219,7 +221,7 @@ def export_output_curve(
         ws_data.column_dimensions[get_column_letter(col + 1)].width = 16
         col += 2
 
-    max_len = max(len(d["x"]) for d in grouped_data.values())
+    max_len = max(len(d["x"]) for d in grouped_data.values()) if grouped_data else 0
     for row_i in range(max_len):
         excel_row = row_i + 3
         is_odd = (row_i % 2 == 0)
@@ -257,9 +259,18 @@ def export_output_curve(
                 font=Font(name="Calibri", italic=True, size=10, color="555555"),
                 alignment=_CENTER)
 
-    xl_img = _figure_to_xl_image(fig, width_px=700, height_px=500)
+    # 출력 전용 figure 생성으로 Blank 방지
+    export_fig = oc_module.create_output_figure(
+        grouped_data, log_scale=log_scale,
+        title="TFT Output Curve  (Vd - Id)",
+        xlim=xlim, ylim=ylim
+    )
+    xl_img = _figure_to_xl_image(export_fig, width_px=700, height_px=500)
+    plt.close(export_fig)
     ws_chart.add_image(xl_img, "B4")
 
+    if not save_path.endswith(".xlsx"):
+        save_path += ".xlsx"
     wb.save(save_path)
 
 
@@ -267,3 +278,4 @@ def _fmt(v: float) -> str:
     if v == int(v):
         return str(int(v))
     return f"{v:.3g}"
+

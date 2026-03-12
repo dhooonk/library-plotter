@@ -108,23 +108,32 @@ class _CurveTab(tk.Frame):
     def __init__(self, parent, **kw):
         super().__init__(parent, bg=BG_DARK, **kw)
         self._filepath  = None
+        self._ref_filepath = None
         self._fig       = None
         self._grouped   = None
+        self._ref_grouped = None
         self._canvas    = None
         self._toolbar   = None
         self._log_var   = tk.BooleanVar(value=self.DEFAULT_LOG)
         self._status_var = tk.StringVar(value="파일을 선택해 주세요.")
+
+        # 축 범위 변수
+        self._xlim_min = tk.StringVar(value="")
+        self._xlim_max = tk.StringVar(value="")
+        self._ylim_min = tk.StringVar(value="")
+        self._ylim_max = tk.StringVar(value="")
+
         self._build_ui()
 
     # ── UI 빌드 ─────────────────────────────────────────────────
 
     def _build_ui(self):
-        self.columnconfigure(0, weight=0, minsize=300)
+        self.columnconfigure(0, weight=0, minsize=320)
         self.columnconfigure(1, weight=1)
         self.rowconfigure(0, weight=1)
 
         # 좌측 패널
-        left = tk.Frame(self, bg=BG_PANEL, width=300)
+        left = tk.Frame(self, bg=BG_PANEL, width=320)
         left.grid(row=0, column=0, sticky="nsew")
         left.grid_propagate(False)
         self._build_left(left)
@@ -155,24 +164,50 @@ class _CurveTab(tk.Frame):
 
         # 파일 선택 카드
         fc = self._make_card(cards, "📂  입력 파일", row=0)
-        self._file_label = tk.Label(fc, text="선택된 파일 없음", font=FONT_SMALL,
-                                    bg=BG_CARD, fg=FG_MUTED, wraplength=240,
+        self._file_label = tk.Label(fc, text="선택된 주 파일 없음", font=FONT_SMALL,
+                                    bg=BG_CARD, fg=FG_MUTED, wraplength=260,
                                     justify="left", anchor="w")
-        self._file_label.pack(fill="x", padx=8, pady=(0, 4))
-        tk.Button(fc, text="엑셀 파일 선택 (.xlsx / .xls)",
+        self._file_label.pack(fill="x", padx=8, pady=(0, 2))
+        tk.Button(fc, text="메인 데이터 선택",
                   command=self._select_file, **BTN_STYLE_PRI).pack(fill="x",
-                  padx=8, pady=4)
+                  padx=8, pady=2)
+                  
+        self._ref_label = tk.Label(fc, text="선택된 비교 데이터 없음", font=FONT_SMALL,
+                                    bg=BG_CARD, fg=FG_MUTED, wraplength=260,
+                                    justify="left", anchor="w")
+        self._ref_label.pack(fill="x", padx=8, pady=(4, 2))
+        tk.Button(fc, text="비교 데이터(Ref) 선택", command=self._select_ref_file,
+                  **BTN_STYLE_SEC).pack(fill="x", padx=8, pady=(2, 4))
+
 
         # 옵션 카드
-        oc = self._make_card(cards, "⚙️  옵션", row=1)
+        oc = self._make_card(cards, "⚙️  옵션 및 축 범위", row=1)
+        
         lf = tk.Frame(oc, bg=BG_CARD)
-        lf.pack(fill="x", padx=8, pady=4)
+        lf.pack(fill="x", padx=8, pady=2)
         tk.Checkbutton(lf, text="Y축 로그 스케일 (Log Scale)",
                        variable=self._log_var,
                        bg=BG_CARD, fg=FG_TEXT, selectcolor=BG_ACCENT,
                        activebackground=BG_CARD, activeforeground=FG_TEXT,
                        font=FONT_LABEL, command=self._on_option_change,
                        relief="flat").pack(anchor="w")
+
+        # 축 범위 그리드 프레임
+        ax_frm = tk.Frame(oc, bg=BG_CARD)
+        ax_frm.pack(fill="x", padx=8, pady=(4, 6))
+        
+        tk.Label(ax_frm, text="X축 범위 (Min - Max):", bg=BG_CARD, fg=FG_MUTED, font=FONT_SMALL).grid(row=0, column=0, columnspan=3, sticky="w")
+        tk.Entry(ax_frm, textvariable=self._xlim_min, width=10, bg=BG_ACCENT, fg=FG_TEXT, relief="flat", bd=3).grid(row=1, column=0, padx=(0,4), pady=2)
+        tk.Label(ax_frm, text="~", bg=BG_CARD, fg=FG_TEXT).grid(row=1, column=1)
+        tk.Entry(ax_frm, textvariable=self._xlim_max, width=10, bg=BG_ACCENT, fg=FG_TEXT, relief="flat", bd=3).grid(row=1, column=2, padx=(4,0), pady=2)
+
+        tk.Label(ax_frm, text="Y축 범위 (Min - Max):", bg=BG_CARD, fg=FG_MUTED, font=FONT_SMALL).grid(row=2, column=0, columnspan=3, sticky="w", pady=(6,0))
+        tk.Entry(ax_frm, textvariable=self._ylim_min, width=10, bg=BG_ACCENT, fg=FG_TEXT, relief="flat", bd=3).grid(row=3, column=0, padx=(0,4), pady=2)
+        tk.Label(ax_frm, text="~", bg=BG_CARD, fg=FG_TEXT).grid(row=3, column=1)
+        tk.Entry(ax_frm, textvariable=self._ylim_max, width=10, bg=BG_ACCENT, fg=FG_TEXT, relief="flat", bd=3).grid(row=3, column=2, padx=(4,0), pady=2)
+        
+        tk.Button(oc, text="🔄 차트 새로 그리기 (적용)", command=self._on_option_change, 
+                  bg="#444466", fg="white", activebackground="#555577", relief="flat", bd=0, pady=4).pack(fill="x", padx=8, pady=(2,4))
 
         # 저장 경로 카드
         sc = self._make_card(cards, "💾  저장 설정", row=2)
@@ -182,7 +217,7 @@ class _CurveTab(tk.Frame):
                   **BTN_STYLE_SEC).pack(fill="x", padx=8, pady=(2, 4))
         self._save_dir_label = tk.Label(sc, text=os.path.expanduser("~"),
                                          font=FONT_SMALL, bg=BG_CARD,
-                                         fg=FG_MUTED, wraplength=240,
+                                         fg=FG_MUTED, wraplength=260,
                                          justify="left", anchor="w")
         self._save_dir_label.pack(fill="x", padx=8, pady=(0, 4))
         self._save_dir = os.path.expanduser("~")
@@ -198,14 +233,14 @@ class _CurveTab(tk.Frame):
 
         # 로그 카드
         lc = self._make_card(cards, "📋  로그", row=4)
-        log_frm, self._log_text = _scrollable_text(lc, height=7)
+        log_frm, self._log_text = _scrollable_text(lc, height=4)
         log_frm.pack(fill="both", expand=True, padx=8, pady=4)
 
         # 상태 바
         sb = tk.Frame(parent, bg="#0d0d20", pady=6)
         sb.grid(row=2, column=0, sticky="ew")
         tk.Label(sb, textvariable=self._status_var, font=FONT_SMALL,
-                 bg="#0d0d20", fg=FG_MUTED, wraplength=260,
+                 bg="#0d0d20", fg=FG_MUTED, wraplength=280,
                  justify="left").pack(padx=12, anchor="w")
 
     def _build_right(self, parent):
@@ -232,7 +267,7 @@ class _CurveTab(tk.Frame):
 
         # 초기 플레이스홀더
         tk.Label(self._chart_frame,
-                 text="엑셀 파일을 선택하고\n'분석 실행'을 눌러주세요.",
+                 text="파일을 선택하고\n'분석 실행'을 눌러주세요.",
                  font=("Segoe UI", 14), bg=BG_DARK, fg=FG_MUTED).place(
                  relx=0.5, rely=0.5, anchor="center")
 
@@ -249,16 +284,32 @@ class _CurveTab(tk.Frame):
 
     # ── 이벤트 핸들러 ────────────────────────────────────────────
 
+    def _parse_limits(self):
+        """UI에 입력된 문자열을 파싱해서 xlim, ylim 튜플 반환."""
+        def _get_val(s):
+            v = s.get().strip()
+            if not v: return None
+            try: return float(v)
+            except ValueError: return None
+            
+        x_min, x_max = _get_val(self._xlim_min), _get_val(self._xlim_max)
+        y_min, y_max = _get_val(self._ylim_min), _get_val(self._ylim_max)
+        
+        xlim = (x_min, x_max) if (x_min is not None and x_max is not None) else None
+        ylim = (y_min, y_max) if (y_min is not None and y_max is not None) else None
+        
+        return xlim, ylim
+
     def _select_file(self):
         fp = filedialog.askopenfilename(
-            title="엑셀 파일 선택",
-            filetypes=[("Excel files", "*.xlsx *.xls"), ("All files", "*.*")]
+            title="메인 데이터 선택",
+            filetypes=[("Excel & CSV Data", "*.xlsx *.xls *.csv"), ("All files", "*.*")]
         )
         if fp:
             self._filepath = fp
             fname = os.path.basename(fp)
-            self._file_label.config(text=fname, fg=ACCENT_GREEN)
-            self._log(f"파일 선택됨: {fname}")
+            self._file_label.config(text=f"(Main) {fname}", fg=ACCENT_GREEN)
+            self._log(f"메인 파일 선택됨: {fname}")
             self._status_var.set(f"✅ 파일 로드 준비 완료")
             # 파일명 기반으로 저장 파일명 자동 설정
             base = os.path.splitext(fname)[0]
@@ -266,6 +317,17 @@ class _CurveTab(tk.Frame):
             self._save_entry.insert(0, f"{base}_result.xlsx")
             self._save_dir = os.path.dirname(fp)
             self._save_dir_label.config(text=self._save_dir)
+            
+    def _select_ref_file(self):
+        fp = filedialog.askopenfilename(
+            title="비교 데이터(Reference) 선택",
+            filetypes=[("Excel & CSV Data", "*.xlsx *.xls *.csv"), ("All files", "*.*")]
+        )
+        if fp:
+            self._ref_filepath = fp
+            fname = os.path.basename(fp)
+            self._ref_label.config(text=f"(Ref) {fname}", fg=ACCENT_BLUE)
+            self._log(f"비교 데이터 파일 선택됨: {fname}")
 
     def _pick_save_dir(self):
         d = filedialog.askdirectory(title="저장 폴더 선택")
@@ -279,7 +341,7 @@ class _CurveTab(tk.Frame):
 
     def _run_analysis(self):
         if not self._filepath:
-            messagebox.showwarning("파일 없음", "엑셀 파일을 먼저 선택해주세요.")
+            messagebox.showwarning("파일 없음", "메인 데이터 파일을 먼저 선택해주세요.")
             return
         self._log("분석 시작...")
         self._status_var.set("⏳ 데이터 파싱 중...")
@@ -289,13 +351,26 @@ class _CurveTab(tk.Frame):
     def _analysis_thread(self):
         try:
             self._grouped = self._parse_data(self._filepath)
+            
+            if self._ref_filepath:
+                self._ref_grouped = self._parse_data(self._ref_filepath)
+            else:
+                self._ref_grouped = None
+                
             n_params = len(self._grouped)
+            if n_params == 0:
+                raise ValueError("유효한 그룹(파라미터) 데이터를 찾지 못했습니다. 데이터 포맷이나 스케일을 확인하세요.")
+                
             param_list = ", ".join(
                 f"{self._format_val(v)}V" for v in sorted(self._grouped.keys())
             )
             self.after(0, lambda: self._log(
                 f"파싱 완료: {self.PARAM_LABEL} {n_params}개 감지\n  → {param_list}"
             ))
+            
+            if self._ref_grouped:
+                self.after(0, lambda: self._log(f"비교 데이터 파싱 완료: {len(self._ref_grouped)}개 파라미터 감지"))
+                
             self.after(0, lambda: self._status_var.set(
                 f"✅ {self.PARAM_LABEL} {n_params}개 감지됨"
             ))
@@ -304,9 +379,9 @@ class _CurveTab(tk.Frame):
             ))
             self.after(0, self._draw_chart)
         except Exception as e:
-            self.after(0, lambda: self._log(f"❌ 오류: {e}"))
+            self.after(0, lambda cur_e=e: self._log(f"❌ 오류: {cur_e}"))
             self.after(0, lambda: self._status_var.set(f"❌ 오류 발생"))
-            self.after(0, lambda: messagebox.showerror("파싱 오류", str(e)))
+            self.after(0, lambda cur_e=e: messagebox.showerror("파싱 오류", str(cur_e)))
 
     def _draw_chart(self):
         if self._grouped is None:
@@ -317,7 +392,9 @@ class _CurveTab(tk.Frame):
             w.destroy()
 
         log_scale = self._log_var.get()
-        self._fig = self._create_figure(self._grouped, log_scale)
+        xlim, ylim = self._parse_limits()
+        
+        self._fig = self._create_figure(self._grouped, log_scale, xlim, ylim)
 
         self._canvas = FigureCanvasTkAgg(self._fig, master=self._chart_frame)
         canvas_widget = self._canvas.get_tk_widget()
@@ -331,7 +408,10 @@ class _CurveTab(tk.Frame):
         self._toolbar.update()
         self._canvas.draw()
 
-        self._log(f"차트 생성 완료 (로그 스케일: {'ON' if log_scale else 'OFF'})")
+        msg = f"차트 생성 완료 (로그: {'ON' if log_scale else 'OFF'})"
+        if xlim or ylim:
+            msg += f" [축 범위 적용]"
+        self._log(msg)
 
     def _export_excel(self):
         if self._grouped is None or self._fig is None:
@@ -345,7 +425,9 @@ class _CurveTab(tk.Frame):
 
         try:
             log_scale = self._log_var.get()
-            self._do_export(self._grouped, self._fig, save_path, log_scale)
+            xlim, ylim = self._parse_limits()
+            
+            self._do_export(self._grouped, self._fig, save_path, log_scale, xlim, ylim)
             self._log(f"✅ 저장 완료: {save_path}")
             self._status_var.set("✅ 엑셀 저장 완료")
             if messagebox.askyesno("저장 완료",
@@ -360,10 +442,10 @@ class _CurveTab(tk.Frame):
     def _parse_data(self, filepath: str) -> dict:
         raise NotImplementedError
 
-    def _create_figure(self, grouped: dict, log_scale: bool):
+    def _create_figure(self, grouped: dict, log_scale: bool, xlim: tuple, ylim: tuple):
         raise NotImplementedError
 
-    def _do_export(self, grouped, fig, save_path, log_scale):
+    def _do_export(self, grouped, fig, save_path, log_scale, xlim, ylim):
         raise NotImplementedError
 
     # ── 내부 유틸 ───────────────────────────────────────────────
@@ -394,15 +476,17 @@ class TransferCurveTab(_CurveTab):
     def _parse_data(self, filepath):
         return data_parser.parse_transfer_curve(filepath)
 
-    def _create_figure(self, grouped, log_scale):
+    def _create_figure(self, grouped, log_scale, xlim, ylim):
         plt.close("all")
         return tc_module.create_transfer_figure(
             grouped, log_scale=log_scale,
             title="TFT Transfer Curve  (Vgs - Id)",
+            xlim=xlim, ylim=ylim,
+            ref_grouped=self._ref_grouped
         )
 
-    def _do_export(self, grouped, fig, save_path, log_scale):
-        excel_exporter.export_transfer_curve(grouped, fig, save_path, log_scale)
+    def _do_export(self, grouped, fig, save_path, log_scale, xlim, ylim):
+        excel_exporter.export_transfer_curve(grouped, fig, save_path, log_scale, xlim, ylim)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -418,15 +502,17 @@ class OutputCurveTab(_CurveTab):
     def _parse_data(self, filepath):
         return data_parser.parse_output_curve(filepath)
 
-    def _create_figure(self, grouped, log_scale):
+    def _create_figure(self, grouped, log_scale, xlim, ylim):
         plt.close("all")
         return oc_module.create_output_figure(
             grouped, log_scale=log_scale,
             title="TFT Output Curve  (Vd - Id)",
+            xlim=xlim, ylim=ylim,
+            ref_grouped=self._ref_grouped
         )
 
-    def _do_export(self, grouped, fig, save_path, log_scale):
-        excel_exporter.export_output_curve(grouped, fig, save_path, log_scale)
+    def _do_export(self, grouped, fig, save_path, log_scale, xlim, ylim):
+        excel_exporter.export_output_curve(grouped, fig, save_path, log_scale, xlim, ylim)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -437,7 +523,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("TFT Curve Analyzer  ─  SmartSpice 시뮬레이션 결과 분석")
-        self.geometry("1280x780")
+        self.geometry("1400x800")
         self.minsize(960, 620)
         self.configure(bg=BG_DARK)
 
@@ -497,36 +583,41 @@ class App(tk.Tk):
         win = tk.Toplevel(self)
         win.title("사용 방법")
         win.configure(bg=BG_PANEL)
-        win.geometry("560x480")
+        win.geometry("640x540")
         win.resizable(False, False)
         help_text = """
-TFT Curve Analyzer  사용 방법
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📈 Transfer Curve 탭
-  • 입력 엑셀 열 순서: A(무시), B=Vg, C=Vd, D=Id
-  • Vd 값별로 Vgs-Id 곡선이 그려집니다.
-  • 데이터 시작 행은 자동 감지됩니다.
-  • Y축 로그 스케일 권장 (Id 값이 매우 작은 경우)
-
-📉 Output Curve 탭
-  • 입력 엑셀 열 순서: A(무시), B=Vd, C=Vg, D=Id
-  • Vg 값별로 Vd-Id 곡선이 그려집니다.
-  • 데이터 시작 행은 자동 감지됩니다.
-
-💾 결과 저장
-  • '엑셀로 저장' 버튼으로 결과 파일 생성
-  • Raw Data 시트: 파라미터별 정렬된 데이터
-  • Chart 시트: 차트 이미지 포함
-
-⚠️  주의사항
-  • 엑셀 파일의 B, C, D 열에 숫자 데이터가 있어야 합니다.
-  • .xlsx 및 .xls 형식 모두 지원합니다.
-  • Vd/Vg 고유 값은 소수점 허용오차로 자동 구분됩니다.
-"""
+        TFT Curve Analyzer  사용 방법
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        
+        📈 Transfer Curve 탭
+          • 입력 데이터 열 순서: A(무시), B=Vg, C=Vd, D=Id
+          • Vd 값별로 Vgs-Id 곡선이 그려집니다.
+          • 데이터 시작 행은 첫 숫자 등장 행부터 자동 감지됩니다.
+          • Y축 로그 스케일 권장 (Id 값이 매우 작은 경우)
+        
+        📉 Output Curve 탭
+          • 입력 데이터 열 순서: A(무시), B=Vd, C=Vg, D=Id
+          • Vg 값별로 Vd-Id 곡선이 그려집니다.
+          • 데이터 시작 행은 첫 숫자 등장 행부터 자동 감지됩니다.
+        
+        🤝 비교 분석 기능 (R-squared)
+          • '메인 데이터'와 함께 '비교 데이터(Ref)'를 추가 업로드하세요.
+          • 동일 조건(동일한 Vd 혹은 Vg) 데이터 곡선이 점선으로 오버레이 표시됩니다.
+          • 두 곡선의 일치 수준 지표(R²)가 범례에 포함되어 표시됩니다.
+          
+        💾 결과 저장
+          • '엑셀로 저장' 버튼으로 결과 파일 생성
+          • Raw Data 시트: 파라미터별 정렬된 데이터
+          • Chart 시트: 차트 이미지 고해상도 포함
+        
+        ⚠️  주의사항
+          • 엑셀 파일(.xls, .xlsx) 및 CSV 파일(.csv) 형식 모두 지원합니다.
+          • Vd/Vg 조건이 5개 미만인 이상치(Noise)는 렌더링에서 자동 제외됩니다.
+        """
+        import textwrap
         txt = tk.Text(win, bg=BG_PANEL, fg=FG_TEXT, font=("Segoe UI", 10),
                       relief="flat", bd=8, wrap="word")
-        txt.insert("1.0", help_text)
+        txt.insert("1.0", textwrap.dedent(help_text).strip())
         txt.config(state="disabled")
         txt.pack(fill="both", expand=True, padx=16, pady=16)
         tk.Button(win, text="닫기", command=win.destroy,
@@ -535,9 +626,9 @@ TFT Curve Analyzer  사용 방법
     def _show_about(self):
         messagebox.showinfo(
             "정보",
-            "TFT Curve Analyzer v1.0\n\n"
+            "TFT Curve Analyzer v1.1\n\n"
             "SmartSpice TFT 시뮬레이션 데이터를\n"
-            "Transfer Curve / Output Curve로 분석하는 도구입니다.\n\n"
+            "Transfer Curve / Output Curve로 분석 및 레퍼런스(R²) 비교하는 도구입니다.\n\n"
             "제작: 2026"
         )
 
@@ -549,3 +640,4 @@ TFT Curve Analyzer  사용 방법
 if __name__ == "__main__":
     app = App()
     app.mainloop()
+
