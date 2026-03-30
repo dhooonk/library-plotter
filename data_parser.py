@@ -54,6 +54,43 @@ def _is_valid_number(val) -> bool:
         return False
 
 
+def _is_data_row(row) -> bool:
+    """
+    주어진 행이 유효한 TFT 데이터 행인지 검증합니다.
+    
+    데이터 행 판단 기준:
+    1. B열(인덱스 1), C열(인덱스 2), D열(인덱스 3) 모두 순수 숫자여야 합니다.
+    2. A열(인덱스 0)에 문자열 값이 존재하는 경우, 반드시 'DataValue'여야만
+       데이터 행으로 인정합니다. A열이 비어 있거나 NaN인 경우는 조건 1만 만족하면 됩니다.
+    
+    이 검증을 통해 헤더 섹션이나 파라미터 정의 섹션 중
+    우연히 B~D열에 숫자가 포함된 행이 데이터로 잘못 파싱되는 것을 방지합니다.
+    
+    Args:
+        row: pandas Series (DataFrame의 한 행)
+        
+    Returns:
+        bool: 유효한 데이터 행이면 True, 그렇지 않으면 False
+    """
+    # 조건 1: B, C, D열이 모두 유효한 숫자인지 확인
+    if not (_is_valid_number(row[1]) and _is_valid_number(row[2]) and _is_valid_number(row[3])):
+        return False
+    
+    # 조건 2: A열(인덱스 0) 값 확인
+    a_val = row[0]
+    if pd.isna(a_val):
+        # A열이 비어 있으면 숫자 조건만으로 데이터 행으로 인정
+        return True
+    
+    a_str = str(a_val).strip()
+    if a_str == "":
+        # A열이 빈 문자열이면 데이터 행으로 인정
+        return True
+    
+    # A열에 값이 있으면 반드시 'DataValue'여야 데이터 행으로 인정
+    return a_str == "DataValue"
+
+
 def _detect_data_start_row(filepath: str, is_csv: bool = False) -> int:
     """
     엑셀/CSV 파일에서 실제 숫자 데이터가 시작되는 행(row)의 인덱스를 자동 감지합니다.
@@ -66,7 +103,7 @@ def _detect_data_start_row(filepath: str, is_csv: bool = False) -> int:
         int: 데이터가 시작되는 0-based 행 인덱스
         
     Raises:
-        ValueError: 순수 숫자로 이루어진 B~D열 행을 찾지 못한 경우
+        ValueError: 유효한 데이터 행(B~D열 숫자 + A열 DataValue 조건)을 찾지 못한 경우
     """
     # 헤더 없이 원시 데이터를 전부 읽어옵니다.
     if is_csv:
@@ -82,15 +119,15 @@ def _detect_data_start_row(filepath: str, is_csv: bool = False) -> int:
         if len(row) < 4:
             continue
         
-        # B열(인덱스 1), C열(인덱스 2), D열(인덱스 3)의 값이
-        # 모두 유효한 숫자 객체일 때, 해당 행을 데이터 시작점으로 반환합니다.
-        if _is_valid_number(row[1]) and _is_valid_number(row[2]) and _is_valid_number(row[3]):
+        # B,C,D열 숫자 조건 + A열 DataValue 조건을 모두 통과하면 데이터 시작 행으로 반환
+        if _is_data_row(row):
             return row_idx
 
     # 끝까지 찾지 못했을 때 예외 발생
     raise ValueError(
         "데이터 시작 행을 찾을 수 없습니다. "
-        "B, C, D 열에 순수 숫자 데이터가 포함된 행이 있는지 확인하세요."
+        "B, C, D 열에 순수 숫자 데이터가 포함되고, "
+        "A 열에 'DataValue' 값이 있는 행이 있는지 확인하세요."
     )
 
 
@@ -171,14 +208,23 @@ def parse_transfer_curve(filepath: str) -> dict:
     else:
         raw = pd.read_excel(filepath, header=None, skiprows=start_row, engine="openpyxl")
 
-    # 3. 열 이름을 무명 인덱스로 초기화 후, 1~3번째 인덱스 열을 추출
+    # 3. 열 이름을 무명 인덱스로 초기화
     raw.columns = range(len(raw.columns))
+    
+    # 4. A열 DataValue 조건으로 유효한 데이터 행만 필터링
+    #    (이으로 새 섹션 더미 행, 매개변수 정의 행 등이 데이터로 잘못 파싱되는 것을 방지)
+    valid_mask = raw.apply(
+        lambda row: _is_data_row(row) if len(row) >= 4 else False, axis=1
+    )
+    raw = raw[valid_mask].reset_index(drop=True)
+    
+    # 5. 1~3번째 인덱스 열을 추출
     df = raw[[1, 2, 3]].copy()
     
     # 파싱될 임시 헤더명 설정 (Transfer Curve: B=Vg, C=Vd, D=Id)
     df.columns = ["Vg", "Vd", "Id"]
     
-    # 4. 각 열을 강제로 숫자형(Numeric)으로 변환, 문자 혼입 등 변환 실패 시 NaN으로 처리
+    # 6. 각 열을 강제로 숫자형(Numeric)으로 변환, 문자 혼입 등 변환 실패 시 NaN으로 처리
     df["Vg"] = pd.to_numeric(df["Vg"], errors="coerce")
     df["Vd"] = pd.to_numeric(df["Vd"], errors="coerce")
     df["Id"] = pd.to_numeric(df["Id"], errors="coerce")
@@ -186,9 +232,10 @@ def parse_transfer_curve(filepath: str) -> dict:
     # NaN이 하나라도 존재하는 열(행)은 버림
     df = df.dropna()
     
-    # 5. Vd 파라미터를 기준으로 그룹화된 딕셔너리 반환
+    # 7. Vd 파라미터를 기준으로 그룹화된 딕셔너리 반환
     grouped = _group_by_param(df, param_col="Vd", x_col="Vg", y_col="Id")
     return grouped
+
 
 
 def parse_output_curve(filepath: str) -> dict:
@@ -212,21 +259,31 @@ def parse_output_curve(filepath: str) -> dict:
     else:
         raw = pd.read_excel(filepath, header=None, skiprows=start_row, engine="openpyxl")
 
-    # 3. Dataframe 열 추출
+    # 3. 열 이름을 무명 인덱스로 초기화
     raw.columns = range(len(raw.columns))
+    
+    # 4. A열 DataValue 조건으로 유효한 데이터 행만 필터링
+    #    (이으로 새 섹션 더미 행, 매개변수 정의 행 등이 데이터로 잘못 파싱되는 것을 방지)
+    valid_mask = raw.apply(
+        lambda row: _is_data_row(row) if len(row) >= 4 else False, axis=1
+    )
+    raw = raw[valid_mask].reset_index(drop=True)
+    
+    # 5. Dataframe 열 추출
     df = raw[[1, 2, 3]].copy()
     
     # 파싱될 임시 헤더명 설정 (Output Curve: B=Vd, C=Vg, D=Id)
     df.columns = ["Vd", "Vg", "Id"]
     
-    # 4. 숫자형 변환 및 결측치 제거
+    # 6. 숫자형 변환 및 결측치 제거
     df["Vd"] = pd.to_numeric(df["Vd"], errors="coerce")
     df["Vg"] = pd.to_numeric(df["Vg"], errors="coerce")
     df["Id"] = pd.to_numeric(df["Id"], errors="coerce")
     df = df.dropna()
     
-    # 5. Vg 파라미터를 기준으로 그룹화된 딕셔너리 반환
+    # 7. Vg 파라미터를 기준으로 그룹화된 딕셔너리 반환
     grouped = _group_by_param(df, param_col="Vg", x_col="Vd", y_col="Id")
     return grouped
+
 
 
