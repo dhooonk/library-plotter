@@ -7,6 +7,7 @@ Transfer Curve (Vgs-Id) 및 Output Curve (Vd-Id) 분석을 지원.
 
 import os
 import sys
+import textwrap
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -14,12 +15,13 @@ from tkinter import ttk, filedialog, messagebox
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
-import data_parser
-import transfer_curve as tc_module
-import output_curve as oc_module
-import excel_exporter
+import core.data_parser as data_parser
+import core.transfer_curve as tc_module
+import core.output_curve as oc_module
+import utils.excel_exporter as excel_exporter
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -453,7 +455,6 @@ class _CurveTab(tk.Frame):
 
     def _get_filtered_grouped(self):
         """_excluded 마스크를 적용한 필터링된 grouped 딕셔너리 반환."""
-        import numpy as np
         if not self._excluded or self._grouped is None:
             return self._grouped
         filtered = {}
@@ -822,7 +823,6 @@ class App(tk.Tk):
           • 엑셀 파일(.xls, .xlsx) 및 CSV 파일(.csv) 형식 모두 지원합니다.
           • Vd/Vg 조건이 5개 미만인 이상치(Noise)는 렌더링에서 자동 제외됩니다.
         """
-        import textwrap
         txt = tk.Text(win, bg=BG_PANEL, fg=FG_TEXT, font=("Segoe UI", 10),
                       relief="flat", bd=8, wrap="word")
         txt.insert("1.0", textwrap.dedent(help_text).strip())
