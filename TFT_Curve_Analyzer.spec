@@ -22,7 +22,7 @@ datas = []
 
 a = Analysis(
     ['main.py'],                 # 메인 실행 파일
-    pathex=[],                   # 작업 디렉토리 경로 (보통 비워둠)
+    pathex=['.'],                # core/, utils/ 패키지 탐색을 위해 프로젝트 루트 포함
     binaries=[],                 # 포함할 동적 라이브러리(dll, so 등)
     datas=datas,                 # 포함할 일반 데이터 파일(이미지, 텍스트 등)
     hiddenimports=hidden_imports,
