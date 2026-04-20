@@ -1,10 +1,3 @@
-"""
-main.py
--------
-TFT Curve Analyzer - 메인 GUI 어플리케이션 (tkinter)
-Transfer Curve (Vgs-Id) 및 Output Curve (Vd-Id) 분석을 지원.
-"""
-
 import os
 import sys
 import textwrap
@@ -59,13 +52,14 @@ BTN_STYLE_GRN = {
     "font": ("Segoe UI", 10, "bold"), "cursor": "hand2",
 }
 
+_CLICK_THRESHOLD_PX = 15  # 우클릭 삭제 허용 반경 (픽셀)
+
 
 # ══════════════════════════════════════════════════════════════════
 #   공통 유틸
 # ══════════════════════════════════════════════════════════════════
 
 def _labeled_entry(parent, label_text, default="", width=40):
-    """레이블 + 입력창 쌍을 생성하여 (frame, entry) 반환. 배치는 호출자가 담당."""
     frm = tk.Frame(parent, bg=BG_CARD)
     tk.Label(frm, text=label_text, bg=BG_CARD, fg=FG_MUTED,
              font=FONT_SMALL, anchor="w").pack(anchor="w", padx=2)
@@ -75,12 +69,6 @@ def _labeled_entry(parent, label_text, default="", width=40):
     ent.insert(0, default)
     ent.pack(fill="x", padx=2)
     return frm, ent
-
-
-def _status_badge(parent, text="READY", color=ACCENT_GREEN):
-    lbl = tk.Label(parent, text=f"  {text}  ", font=("Segoe UI", 9, "bold"),
-                   bg=color, fg="#ffffff", relief="flat", bd=0)
-    return lbl
 
 
 def _scrollable_text(parent, height=6):
@@ -100,33 +88,26 @@ def _scrollable_text(parent, height=6):
 # ══════════════════════════════════════════════════════════════════
 
 class _CurveTab(tk.Frame):
-    """
-    Transfer Curve 및 Output Curve 탭에서 공통으로 사용되는 UI 레이아웃 컨테이너입니다.
-    좌측에는 데이터 선택, 옵션 제어, 저장 경로 등을 입력하는 컨트롤 패널을 가지며,
-    우측에는 Matplotlib 결과물이 렌더링되는 차트 캔버스를 가집니다.
-    공통된 기능을 상속(Inheritance)받기 위한 기반 클래스(Base class)입니다.
-    """
-
-    MODE_LABEL   = ""   # 탭 제목 라벨 (서브클래스에서 오버라이드)
-    PARAM_LABEL  = ""   # "Vd" or "Vg"
-    X_LABEL      = ""   # "Vg" or "Vd"
+    MODE_LABEL   = ""
+    PARAM_LABEL  = ""
+    X_LABEL      = ""
     DEFAULT_LOG  = True
 
     def __init__(self, parent, **kw):
         super().__init__(parent, bg=BG_DARK, **kw)
-        self._filepath  = None
+        self._filepath     = None
         self._ref_filepath = None
-        self._fig       = None
-        self._grouped   = None
-        self._ref_grouped = None
-        self._canvas    = None
-        self._toolbar   = None
-        self._log_var   = tk.BooleanVar(value=self.DEFAULT_LOG)
-        self._status_var = tk.StringVar(value="파일을 선택해 주세요.")
-        # 이상치 삭제를 위한 마스크 저장 {param_key: set of excluded indices}
-        self._excluded = {}
+        self._fig          = None
+        self._ax           = None
+        self._grouped      = None
+        self._ref_grouped  = None
+        self._canvas       = None
+        self._toolbar      = None
+        self._hover_annot  = None
+        self._log_var      = tk.BooleanVar(value=self.DEFAULT_LOG)
+        self._status_var   = tk.StringVar(value="파일을 선택해 주세요.")
+        self._excluded     = {}
 
-        # 축 범위 변수
         self._xlim_min = tk.StringVar(value="")
         self._xlim_max = tk.StringVar(value="")
         self._ylim_min = tk.StringVar(value="")
@@ -141,20 +122,17 @@ class _CurveTab(tk.Frame):
         self.columnconfigure(1, weight=1)
         self.rowconfigure(0, weight=1)
 
-        # 좌측 외부 컨테이너 (고정 너비)
         left_outer = tk.Frame(self, bg=BG_PANEL, width=320)
         left_outer.grid(row=0, column=0, sticky="nsew")
         left_outer.grid_propagate(False)
-        left_outer.rowconfigure(0, weight=1)   # 스크롤 영역이 확장
-        left_outer.rowconfigure(1, weight=0)   # 상태 바는 고정
+        left_outer.rowconfigure(0, weight=1)
+        left_outer.rowconfigure(1, weight=0)
         left_outer.columnconfigure(0, weight=1)
 
-        # 스크롤바
         left_vsb = tk.Scrollbar(left_outer, orient="vertical",
                                 bg=BG_ACCENT, troughcolor=BG_PANEL, relief="flat")
         left_vsb.grid(row=0, column=1, sticky="ns")
 
-        # 스크롤 가능한 Canvas
         self._left_canvas = tk.Canvas(
             left_outer, bg=BG_PANEL, highlightthickness=0,
             yscrollcommand=left_vsb.set
@@ -162,27 +140,23 @@ class _CurveTab(tk.Frame):
         self._left_canvas.grid(row=0, column=0, sticky="nsew")
         left_vsb.config(command=self._left_canvas.yview)
 
-        # Canvas 내부에 실제 콘텐츠 프레임
         left = tk.Frame(self._left_canvas, bg=BG_PANEL)
         self._left_window = self._left_canvas.create_window(
             (0, 0), window=left, anchor="nw"
         )
         left.bind("<Configure>", self._on_left_configure)
         self._left_canvas.bind("<Configure>", self._on_left_canvas_configure)
-        # 마우스 휠은 left_canvas / left 프레임 위에서만 동작
         self._left_canvas.bind("<MouseWheel>", self._on_mousewheel)
         left.bind("<MouseWheel>", self._on_mousewheel)
 
         self._build_left(left)
 
-        # 상태 바 – Canvas 스크롤 밖, left_outer row=1에 고정 배치
         sb_frame = tk.Frame(left_outer, bg="#0d0d20", pady=6)
         sb_frame.grid(row=1, column=0, columnspan=2, sticky="ew")
         tk.Label(sb_frame, textvariable=self._status_var, font=FONT_SMALL,
                  bg="#0d0d20", fg=FG_MUTED, wraplength=280,
                  justify="left").pack(padx=12, anchor="w")
 
-        # 우측 차트 패널
         right = tk.Frame(self, bg=BG_DARK)
         right.grid(row=0, column=1, sticky="nsew")
         right.rowconfigure(1, weight=1)
@@ -190,11 +164,8 @@ class _CurveTab(tk.Frame):
         self._build_right(right)
 
     def _build_left(self, parent):
-        """Canvas 내부 스크롤 콘텐츠 프레임을 구성합니다.
-        상태 바는 _build_ui에서 Canvas 외부(left_outer)에 별도 배치됩니다."""
         parent.columnconfigure(0, weight=1)
 
-        # ── 제목 ──
         hdr = tk.Frame(parent, bg="#0d0d20", pady=12)
         hdr.grid(row=0, column=0, sticky="ew")
         tk.Label(hdr, text=self.MODE_LABEL, font=FONT_TITLE,
@@ -202,7 +173,6 @@ class _CurveTab(tk.Frame):
         tk.Label(hdr, text="SmartSpice 시뮬레이션 결과 분석기",
                  font=FONT_SMALL, bg="#0d0d20", fg=FG_MUTED).pack(padx=16)
 
-        # ── 카드 컨테이너 ──
         cards = tk.Frame(parent, bg=BG_PANEL)
         cards.grid(row=1, column=0, sticky="ew", padx=10, pady=8)
         cards.columnconfigure(0, weight=1)
@@ -214,8 +184,7 @@ class _CurveTab(tk.Frame):
                                     justify="left", anchor="w")
         self._file_label.pack(fill="x", padx=8, pady=(0, 2))
         tk.Button(fc, text="메인 데이터 선택",
-                  command=self._select_file, **BTN_STYLE_PRI).pack(fill="x",
-                  padx=8, pady=2)
+                  command=self._select_file, **BTN_STYLE_PRI).pack(fill="x", padx=8, pady=2)
 
         self._ref_label = tk.Label(fc, text="선택된 비교 데이터 없음", font=FONT_SMALL,
                                     bg=BG_CARD, fg=FG_MUTED, wraplength=260,
@@ -236,59 +205,82 @@ class _CurveTab(tk.Frame):
                        font=FONT_LABEL, command=self._on_option_change,
                        relief="flat").pack(anchor="w")
 
-        # 축 범위 그리드 프레임
         ax_frm = tk.Frame(oc, bg=BG_CARD)
         ax_frm.pack(fill="x", padx=8, pady=(4, 6))
 
-        tk.Label(ax_frm, text="X축 범위 (Min - Max):", bg=BG_CARD, fg=FG_MUTED, font=FONT_SMALL).grid(row=0, column=0, columnspan=3, sticky="w")
-        tk.Entry(ax_frm, textvariable=self._xlim_min, width=10, bg=BG_ACCENT, fg=FG_TEXT, relief="flat", bd=3).grid(row=1, column=0, padx=(0,4), pady=2)
+        tk.Label(ax_frm, text="X축 범위 (Min - Max):", bg=BG_CARD, fg=FG_MUTED,
+                 font=FONT_SMALL).grid(row=0, column=0, columnspan=3, sticky="w")
+        tk.Entry(ax_frm, textvariable=self._xlim_min, width=10, bg=BG_ACCENT,
+                 fg=FG_TEXT, relief="flat", bd=3).grid(row=1, column=0, padx=(0, 4), pady=2)
         tk.Label(ax_frm, text="~", bg=BG_CARD, fg=FG_TEXT).grid(row=1, column=1)
-        tk.Entry(ax_frm, textvariable=self._xlim_max, width=10, bg=BG_ACCENT, fg=FG_TEXT, relief="flat", bd=3).grid(row=1, column=2, padx=(4,0), pady=2)
+        tk.Entry(ax_frm, textvariable=self._xlim_max, width=10, bg=BG_ACCENT,
+                 fg=FG_TEXT, relief="flat", bd=3).grid(row=1, column=2, padx=(4, 0), pady=2)
 
-        tk.Label(ax_frm, text="Y축 범위 (Min - Max):", bg=BG_CARD, fg=FG_MUTED, font=FONT_SMALL).grid(row=2, column=0, columnspan=3, sticky="w", pady=(6,0))
-        tk.Entry(ax_frm, textvariable=self._ylim_min, width=10, bg=BG_ACCENT, fg=FG_TEXT, relief="flat", bd=3).grid(row=3, column=0, padx=(0,4), pady=2)
+        tk.Label(ax_frm, text="Y축 범위 (Min - Max):", bg=BG_CARD, fg=FG_MUTED,
+                 font=FONT_SMALL).grid(row=2, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        tk.Entry(ax_frm, textvariable=self._ylim_min, width=10, bg=BG_ACCENT,
+                 fg=FG_TEXT, relief="flat", bd=3).grid(row=3, column=0, padx=(0, 4), pady=2)
         tk.Label(ax_frm, text="~", bg=BG_CARD, fg=FG_TEXT).grid(row=3, column=1)
-        tk.Entry(ax_frm, textvariable=self._ylim_max, width=10, bg=BG_ACCENT, fg=FG_TEXT, relief="flat", bd=3).grid(row=3, column=2, padx=(4,0), pady=2)
+        tk.Entry(ax_frm, textvariable=self._ylim_max, width=10, bg=BG_ACCENT,
+                 fg=FG_TEXT, relief="flat", bd=3).grid(row=3, column=2, padx=(4, 0), pady=2)
 
         tk.Button(oc, text="🔄 차트 새로 그리기 (적용)", command=self._on_option_change,
-                  bg="#444466", fg="white", activebackground="#555577", relief="flat", bd=0, pady=4).pack(fill="x", padx=8, pady=(2,4))
+                  bg="#444466", fg="white", activebackground="#555577",
+                  relief="flat", bd=0, pady=4).pack(fill="x", padx=8, pady=(2, 4))
 
         # 이상치 삭제 카드
         outlier_card = self._make_card(cards, "🗑️  이상치 삭제", row=2)
-        info_lbl = tk.Label(outlier_card,
-                            text="파라미터와 인덱스(0-base)를 입력하여\n해당 데이터 포인트를 제거합니다.",
-                            font=FONT_SMALL, bg=BG_CARD, fg=FG_MUTED,
-                            justify="left", anchor="w", wraplength=260)
-        info_lbl.pack(fill="x", padx=8, pady=(0, 4))
+        tk.Label(outlier_card,
+                 text="파라미터 선택 시 데이터 목록 표시\n인덱스 입력 후 삭제 또는 차트에서 우클릭",
+                 font=FONT_SMALL, bg=BG_CARD, fg=FG_MUTED,
+                 justify="left", anchor="w", wraplength=260).pack(fill="x", padx=8, pady=(0, 4))
 
         sel_frm = tk.Frame(outlier_card, bg=BG_CARD)
         sel_frm.pack(fill="x", padx=8, pady=2)
         sel_frm.columnconfigure(1, weight=1)
 
-        tk.Label(sel_frm, text="파라미터 값:", bg=BG_CARD, fg=FG_MUTED, font=FONT_SMALL).grid(row=0, column=0, sticky="w", padx=(0,4))
+        tk.Label(sel_frm, text="파라미터 값:", bg=BG_CARD, fg=FG_MUTED,
+                 font=FONT_SMALL).grid(row=0, column=0, sticky="w", padx=(0, 4))
         self._outlier_param_var = tk.StringVar()
         self._outlier_param_combo = ttk.Combobox(sel_frm, textvariable=self._outlier_param_var,
                                                   state="readonly", width=14)
         self._outlier_param_combo.grid(row=0, column=1, sticky="ew", pady=2)
+        self._outlier_param_combo.bind("<<ComboboxSelected>>", self._update_outlier_data_preview)
 
-        tk.Label(sel_frm, text="데이터 인덱스:", bg=BG_CARD, fg=FG_MUTED, font=FONT_SMALL).grid(row=1, column=0, sticky="w", padx=(0,4))
+        tk.Label(sel_frm, text="데이터 인덱스:", bg=BG_CARD, fg=FG_MUTED,
+                 font=FONT_SMALL).grid(row=1, column=0, sticky="w", padx=(0, 4))
         self._outlier_idx_entry = tk.Entry(sel_frm, width=14, bg=BG_ACCENT, fg=FG_TEXT,
                                            insertbackground=FG_TEXT, relief="flat", bd=3,
                                            font=FONT_MONO)
         self._outlier_idx_entry.grid(row=1, column=1, sticky="ew", pady=2)
         tk.Label(sel_frm, text="  (쉼표 구분 다중 입력 가능)",
-                 bg=BG_CARD, fg=FG_MUTED, font=("Segoe UI", 8)).grid(row=2, column=0, columnspan=2, sticky="w")
+                 bg=BG_CARD, fg=FG_MUTED, font=("Segoe UI", 8)).grid(
+                 row=2, column=0, columnspan=2, sticky="w")
+
+        # 인덱스-X-Y 데이터 미리보기 테이블
+        preview_outer = tk.Frame(outlier_card, bg=BG_CARD)
+        preview_outer.pack(fill="x", padx=8, pady=(6, 2))
+        tk.Label(preview_outer, text="데이터 목록 (Idx | X | Y)  ✗=제외됨",
+                 bg=BG_CARD, fg=FG_MUTED, font=FONT_SMALL).pack(anchor="w")
+        preview_scroll = tk.Scrollbar(preview_outer, orient="vertical")
+        self._preview_text = tk.Text(
+            preview_outer, height=6, font=("Consolas", 8),
+            bg="#0d0d1a", fg="#80c0ff", relief="flat", bd=2,
+            state="disabled", yscrollcommand=preview_scroll.set,
+        )
+        preview_scroll.config(command=self._preview_text.yview)
+        preview_scroll.pack(side="right", fill="y")
+        self._preview_text.pack(side="left", fill="x", expand=True)
 
         btn_frm = tk.Frame(outlier_card, bg=BG_CARD)
         btn_frm.pack(fill="x", padx=8, pady=(4, 2))
         tk.Button(btn_frm, text="✂️ 선택 삭제", command=self._remove_outlier,
                   bg=ACCENT_RED, fg="white", activebackground="#cc3a47",
                   relief="flat", bd=0, padx=10, pady=5,
-                  font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="left", padx=(0,4))
+                  font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="left", padx=(0, 4))
         tk.Button(btn_frm, text="↩ 전체 복원", command=self._reset_outliers,
                   **BTN_STYLE_SEC).pack(side="left")
 
-        # 현재 제외된 포인트 표시 레이블
         self._outlier_info_lbl = tk.Label(outlier_card, text="제외된 포인트: 없음",
                                           font=FONT_SMALL, bg=BG_CARD, fg=FG_MUTED,
                                           wraplength=260, justify="left", anchor="w")
@@ -310,21 +302,16 @@ class _CurveTab(tk.Frame):
         # 실행 카드
         rc = self._make_card(cards, "▶  실행", row=4)
         tk.Button(rc, text="📊  분석 실행",
-                  command=self._run_analysis, **BTN_STYLE_PRI).pack(
-                  fill="x", padx=8, pady=4)
+                  command=self._run_analysis, **BTN_STYLE_PRI).pack(fill="x", padx=8, pady=4)
         tk.Button(rc, text="📥  엑셀로 저장",
-                  command=self._export_excel, **BTN_STYLE_GRN).pack(
-                  fill="x", padx=8, pady=4)
+                  command=self._export_excel, **BTN_STYLE_GRN).pack(fill="x", padx=8, pady=4)
 
         # 로그 카드
         lc = self._make_card(cards, "📋  로그", row=5)
         log_frm, self._log_text = _scrollable_text(lc, height=4)
         log_frm.pack(fill="both", expand=True, padx=8, pady=4)
 
-        # ▶ 상태 바는 _build_ui 내 left_outer에 고정 배치됨 (여기서는 생략)
-
     def _build_right(self, parent):
-        # 차트 제목 바
         hbar = tk.Frame(parent, bg=BG_ACCENT, height=40)
         hbar.grid(row=0, column=0, sticky="ew")
         hbar.grid_propagate(False)
@@ -333,19 +320,15 @@ class _CurveTab(tk.Frame):
                                       bg=BG_ACCENT, fg=FG_TEXT)
         self._chart_title.pack(side="left", padx=16, pady=8)
 
-        # 파라미터 정보 레이블
-        self._param_label = tk.Label(hbar, text="",
-                                      font=FONT_SMALL,
+        self._param_label = tk.Label(hbar, text="", font=FONT_SMALL,
                                       bg=BG_ACCENT, fg=ACCENT_GREEN)
         self._param_label.pack(side="right", padx=16)
 
-        # 차트 영역
         self._chart_frame = tk.Frame(parent, bg=BG_DARK)
         self._chart_frame.grid(row=1, column=0, sticky="nsew")
         self._chart_frame.rowconfigure(0, weight=1)
         self._chart_frame.columnconfigure(0, weight=1)
 
-        # 초기 플레이스홀더
         tk.Label(self._chart_frame,
                  text="파일을 선택하고\n'분석 실행'을 눌러주세요.",
                  font=("Segoe UI", 14), bg=BG_DARK, fg=FG_MUTED).place(
@@ -356,36 +339,25 @@ class _CurveTab(tk.Frame):
         frm.grid(row=row, column=0, sticky="ew", pady=5)
         frm.columnconfigure(0, weight=1)
         tk.Label(frm, text=title, font=("Segoe UI", 10, "bold"),
-                 bg=BG_CARD, fg=ACCENT_BLUE, anchor="w").pack(
-                 fill="x", padx=8, pady=(4, 2))
-        sep = tk.Frame(frm, height=1, bg=BG_ACCENT)
-        sep.pack(fill="x", padx=8, pady=(0, 4))
+                 bg=BG_CARD, fg=ACCENT_BLUE, anchor="w").pack(fill="x", padx=8, pady=(4, 2))
+        tk.Frame(frm, height=1, bg=BG_ACCENT).pack(fill="x", padx=8, pady=(0, 4))
         return frm
 
-    # ── 스크롤 이벤트 핸들러 ─────────────────────────────────────
+    # ── 스크롤 ──────────────────────────────────────────────────
 
     def _on_left_configure(self, event):
-        """내부 콘텐츠 크기가 변할 때 Canvas의 scrollregion 갱신."""
-        self._left_canvas.configure(
-            scrollregion=self._left_canvas.bbox("all")
-        )
+        self._left_canvas.configure(scrollregion=self._left_canvas.bbox("all"))
 
     def _on_left_canvas_configure(self, event):
-        """Canvas 크기가 변할 때 내부 윈도우 너비 동기화."""
         self._left_canvas.itemconfig(self._left_window, width=event.width)
 
     def _on_mousewheel(self, event):
-        """마우스 휠 이벤트로 좌측 패널 스크롤 (macOS / Windows 공용)."""
-        # macOS: event.delta는 양수면 위로, 음수면 아래로 스크롤
-        # Windows/Linux: 120 단위로 들어오므로 나누기 처리
         if event.delta:
-            amount = -1 if event.delta > 0 else 1
-            self._left_canvas.yview_scroll(amount, "units")
+            self._left_canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
 
-    # ── 이상치 삭제 이벤트 핸들러 ────────────────────────────────
+    # ── 이상치 삭제 ──────────────────────────────────────────────
 
     def _update_outlier_combo(self):
-        """그룹 데이터 파싱 후 Combobox 옵션을 갱신."""
         if self._grouped is None:
             return
         keys = sorted(self._grouped.keys())
@@ -393,9 +365,29 @@ class _CurveTab(tk.Frame):
         self._outlier_param_combo["values"] = values
         if values:
             self._outlier_param_combo.set(values[0])
+            self._update_outlier_data_preview()
+
+    def _update_outlier_data_preview(self, event=None):
+        """선택된 파라미터의 (인덱스, X, Y) 목록을 미리보기에 표시. ✗는 제외된 항목."""
+        self._preview_text.config(state="normal")
+        self._preview_text.delete("1.0", "end")
+
+        param_key = self._get_selected_param_key()
+        if param_key is None or self._grouped is None:
+            self._preview_text.config(state="disabled")
+            return
+
+        data = self._grouped[param_key]
+        excluded = self._excluded.get(param_key, set())
+        self._preview_text.insert("end", f"{'Idx':>4}  {'X':>12}  {'Y':>12}\n")
+        self._preview_text.insert("end", "─" * 34 + "\n")
+        for i, (x, y) in enumerate(zip(data["x"], data["y"])):
+            marker = " ✗" if i in excluded else "  "
+            self._preview_text.insert("end", f"{i:>4}{marker}  {x:>12.4g}  {y:>12.3e}\n")
+
+        self._preview_text.config(state="disabled")
 
     def _get_selected_param_key(self):
-        """Combobox에서 선택된 파라미터 값(float)을 반환."""
         if self._grouped is None:
             return None
         val_str = self._outlier_param_var.get().strip()
@@ -405,7 +397,6 @@ class _CurveTab(tk.Frame):
         return None
 
     def _remove_outlier(self):
-        """선택된 파라미터의 지정 인덱스 데이터를 제외 집합에 추가하고 차트 재렌더링."""
         param_key = self._get_selected_param_key()
         if param_key is None:
             messagebox.showwarning("선택 오류", "먼저 분석을 실행하고 파라미터를 선택하세요.")
@@ -423,69 +414,93 @@ class _CurveTab(tk.Frame):
         data_len = len(self._grouped[param_key]["x"])
         invalid = [i for i in indices if i < 0 or i >= data_len]
         if invalid:
-            messagebox.showerror("범위 오류",
-                f"유효 범위(0~{data_len-1}) 벗어난 인덱스: {invalid}")
+            messagebox.showerror("범위 오류", f"유효 범위(0~{data_len-1}) 벗어난 인덱스: {invalid}")
             return
 
-        if param_key not in self._excluded:
-            self._excluded[param_key] = set()
-        self._excluded[param_key].update(indices)
+        self._excluded.setdefault(param_key, set()).update(indices)
         self._log(f"파라미터 {self._format_val(param_key)}V → 인덱스 {sorted(indices)} 제외")
         self._update_outlier_label()
+        self._update_outlier_data_preview()
         self._draw_chart()
 
     def _reset_outliers(self):
-        """모든 이상치 제외 정보를 초기화하고 차트 재렌더링."""
         self._excluded.clear()
         self._outlier_info_lbl.config(text="제외된 포인트: 없음")
         self._log("이상치 제외 목록 초기화")
+        self._update_outlier_data_preview()
         if self._grouped is not None:
             self._draw_chart()
 
     def _update_outlier_label(self):
-        """제외된 데이터 포인트 요약 텍스트 갱신."""
         if not self._excluded:
             self._outlier_info_lbl.config(text="제외된 포인트: 없음")
             return
-        parts = []
-        for k, idxs in sorted(self._excluded.items()):
-            if idxs:
-                parts.append(f"{self._format_val(k)}V→{sorted(idxs)}")
+        parts = [f"{self._format_val(k)}V→{sorted(v)}"
+                 for k, v in sorted(self._excluded.items()) if v]
         self._outlier_info_lbl.config(text="제외: " + "  ".join(parts))
 
     def _get_filtered_grouped(self):
-        """_excluded 마스크를 적용한 필터링된 grouped 딕셔너리 반환."""
         if not self._excluded or self._grouped is None:
             return self._grouped
         filtered = {}
         for k, data in self._grouped.items():
             if k in self._excluded and self._excluded[k]:
                 mask = [i for i in range(len(data["x"])) if i not in self._excluded[k]]
-                filtered[k] = {
-                    "x": data["x"][mask],
-                    "y": data["y"][mask],
-                }
+                filtered[k] = {"x": data["x"][mask], "y": data["y"][mask]}
             else:
                 filtered[k] = data
         return filtered
 
-    # ── 이벤트 핸들러 ────────────────────────────────────────────
+    def _filtered_to_original_idx(self, param_key, filtered_idx: int) -> int:
+        """필터링된 배열의 인덱스를 원본 grouped 배열의 인덱스로 변환."""
+        excluded = self._excluded.get(param_key, set())
+        count = 0
+        for orig_idx in range(len(self._grouped[param_key]["x"])):
+            if orig_idx not in excluded:
+                if count == filtered_idx:
+                    return orig_idx
+                count += 1
+        return -1
+
+    # ── 축 범위 파싱 / 자동 입력 ─────────────────────────────────
 
     def _parse_limits(self):
-        """UI에 입력된 문자열을 파싱해서 xlim, ylim 튜플 반환."""
         def _get_val(s):
             v = s.get().strip()
-            if not v: return None
-            try: return float(v)
-            except ValueError: return None
-            
+            if not v:
+                return None
+            try:
+                return float(v)
+            except ValueError:
+                return None
+
         x_min, x_max = _get_val(self._xlim_min), _get_val(self._xlim_max)
         y_min, y_max = _get_val(self._ylim_min), _get_val(self._ylim_max)
-        
         xlim = (x_min, x_max) if (x_min is not None and x_max is not None) else None
         ylim = (y_min, y_max) if (y_min is not None and y_max is not None) else None
-        
         return xlim, ylim
+
+    def _auto_fill_axis_limits(self):
+        """파싱 완료 직후 실제 데이터 범위로 축 Min/Max 필드를 자동으로 채움."""
+        if not self._grouped:
+            return
+        all_x = np.concatenate([d["x"] for d in self._grouped.values()])
+        all_y_raw = np.concatenate([d["y"] for d in self._grouped.values()])
+
+        self._xlim_min.set(f"{all_x.min():.4g}")
+        self._xlim_max.set(f"{all_x.max():.4g}")
+
+        if self._log_var.get():
+            pos_y = np.abs(all_y_raw)
+            pos_y = pos_y[pos_y > 0]
+            if len(pos_y):
+                self._ylim_min.set(f"{pos_y.min():.3e}")
+                self._ylim_max.set(f"{pos_y.max():.3e}")
+        else:
+            self._ylim_min.set(f"{all_y_raw.min():.4g}")
+            self._ylim_max.set(f"{all_y_raw.max():.4g}")
+
+    # ── 파일 선택 / 저장 ─────────────────────────────────────────
 
     def _select_file(self):
         fp = filedialog.askopenfilename(
@@ -497,14 +512,13 @@ class _CurveTab(tk.Frame):
             fname = os.path.basename(fp)
             self._file_label.config(text=f"(Main) {fname}", fg=ACCENT_GREEN)
             self._log(f"메인 파일 선택됨: {fname}")
-            self._status_var.set(f"✅ 파일 로드 준비 완료")
-            # 파일명 기반으로 저장 파일명 자동 설정
+            self._status_var.set("✅ 파일 로드 준비 완료")
             base = os.path.splitext(fname)[0]
             self._save_entry.delete(0, "end")
             self._save_entry.insert(0, f"{base}_result.xlsx")
             self._save_dir = os.path.dirname(fp)
             self._save_dir_label.config(text=self._save_dir)
-            
+
     def _select_ref_file(self):
         fp = filedialog.askopenfilename(
             title="비교 데이터(Reference) 선택",
@@ -526,82 +540,69 @@ class _CurveTab(tk.Frame):
         if self._grouped is not None:
             self._draw_chart()
 
+    # ── 분석 실행 ────────────────────────────────────────────────
+
     def _run_analysis(self):
-        """
-        '분석 실행' 버튼 클릭 이벤트 핸들러입니다.
-        데이터 파싱 및 차트 렌더링 시 응용 프로그램 UI가 멈추는(Freezing) 현상을
-        효과적으로 방지하기 위해 분석 태스크를 별도 스레드(Thread)로 넘깁니다.
-        """
         if not self._filepath:
             messagebox.showwarning("파일 없음", "메인 데이터 파일을 먼저 선택해주세요.")
             return
-        # 새 분석 시 이상치 제외 초기화
         self._excluded.clear()
         self._log("분석 시작...")
         self._status_var.set("⏳ 데이터 파싱 중...")
-        # 별도 데몬 스레드에서 백그라운드 작업 수행
         threading.Thread(target=self._analysis_thread, daemon=True).start()
 
     def _analysis_thread(self):
-        """
-        분석 스레드의 핵심 로직입니다.
-        데이터 파서(Parser)를 호출하여 엑셀/CSV 모델 데이터를 읽어들이고,
-        비교 대상 파일(Reference)이 존재할 경우 동시에 로드한 뒤,
-        Tkinter의 UI 메인 루프에 안전하게 통신(self.after 활용)하여 차트를 생성합니다.
-        """
         try:
-            # 1. 메인 파일 파싱
             self._grouped = self._parse_data(self._filepath)
-
-            # 2. 비교 대상(Reference) 파일 파싱
-            if self._ref_filepath:
-                self._ref_grouped = self._parse_data(self._ref_filepath)
-            else:
-                self._ref_grouped = None
+            self._ref_grouped = self._parse_data(self._ref_filepath) if self._ref_filepath else None
 
             n_params = len(self._grouped)
             if n_params == 0:
-                raise ValueError("유효한 그룹(파라미터) 데이터를 찾지 못했습니다. 데이터 포맷이나 스케일을 확인하세요.")
+                raise ValueError("유효한 그룹(파라미터) 데이터를 찾지 못했습니다.")
 
-            param_list = ", ".join(
-                f"{self._format_val(v)}V" for v in sorted(self._grouped.keys())
-            )
+            param_list = ", ".join(f"{self._format_val(v)}V" for v in sorted(self._grouped.keys()))
             self.after(0, lambda: self._log(
                 f"파싱 완료: {self.PARAM_LABEL} {n_params}개 감지\n  → {param_list}"
             ))
-
             if self._ref_grouped:
-                self.after(0, lambda: self._log(f"비교 데이터 파싱 완료: {len(self._ref_grouped)}개 파라미터 감지"))
-
-            self.after(0, lambda: self._status_var.set(
-                f"✅ {self.PARAM_LABEL} {n_params}개 감지됨"
-            ))
+                self.after(0, lambda: self._log(
+                    f"비교 데이터 파싱 완료: {len(self._ref_grouped)}개 파라미터"
+                ))
+            self.after(0, lambda: self._status_var.set(f"✅ {self.PARAM_LABEL} {n_params}개 감지됨"))
             self.after(0, lambda: self._param_label.config(
                 text=f"{self.PARAM_LABEL} 값: {param_list}"
             ))
-            # 이상치 Combobox 갱신 및 차트 그리기
+            self.after(0, self._auto_fill_axis_limits)
             self.after(0, self._update_outlier_combo)
             self.after(0, self._draw_chart)
         except Exception as e:
             self.after(0, lambda cur_e=e: self._log(f"❌ 오류: {cur_e}"))
-            self.after(0, lambda: self._status_var.set(f"❌ 오류 발생"))
+            self.after(0, lambda: self._status_var.set("❌ 오류 발생"))
             self.after(0, lambda cur_e=e: messagebox.showerror("파싱 오류", str(cur_e)))
+
+    # ── 차트 렌더링 ──────────────────────────────────────────────
 
     def _draw_chart(self):
         if self._grouped is None:
             return
 
-        # 기존 차트 제거
         for w in self._chart_frame.winfo_children():
             w.destroy()
 
         log_scale = self._log_var.get()
         xlim, ylim = self._parse_limits()
-
-        # 이상치 필터 적용된 데이터로 차트 생성
         display_grouped = self._get_filtered_grouped()
 
         self._fig = self._create_figure(display_grouped, log_scale, xlim, ylim)
+        self._ax = self._fig.axes[0]
+
+        # 마우스 호버 좌표 어노테이션
+        self._hover_annot = self._ax.annotate(
+            "", xy=(0, 0), xytext=(12, 12), textcoords="offset points",
+            bbox=dict(boxstyle="round,pad=0.3", fc="#1e1e2e", ec="#4a9eff", alpha=0.9),
+            fontsize=8.5, color="#e0e0f0", annotation_clip=False,
+            visible=False, zorder=10,
+        )
 
         self._canvas = FigureCanvasTkAgg(self._fig, master=self._chart_frame)
         canvas_widget = self._canvas.get_tk_widget()
@@ -613,15 +614,84 @@ class _CurveTab(tk.Frame):
         self._toolbar = NavigationToolbar2Tk(self._canvas, toolbar_frame)
         self._toolbar.config(background="#1a1a2e")
         self._toolbar.update()
+
+        self._canvas.mpl_connect('motion_notify_event', self._on_chart_hover)
+        self._canvas.mpl_connect('button_press_event', self._on_chart_click)
         self._canvas.draw()
 
         msg = f"차트 생성 완료 (로그: {'ON' if log_scale else 'OFF'})"
         if xlim or ylim:
-            msg += f" [축 범위 적용]"
+            msg += " [축 범위 적용]"
         if self._excluded:
-            excluded_cnt = sum(len(v) for v in self._excluded.values())
-            msg += f" [이상치 {excluded_cnt}개 제외]"
+            msg += f" [이상치 {sum(len(v) for v in self._excluded.values())}개 제외]"
         self._log(msg)
+
+    def _on_chart_hover(self, event):
+        """마우스 위치의 데이터 좌표를 차트 어노테이션으로 실시간 표시."""
+        if self._hover_annot is None:
+            return
+        if event.inaxes and event.xdata is not None and event.ydata is not None:
+            x, y = event.xdata, event.ydata
+            y_fmt = f"{y:.3e}" if self._log_var.get() else f"{y:.4g}"
+            self._hover_annot.set_text(f"x: {x:.4g}\ny: {y_fmt}")
+            self._hover_annot.xy = (x, y)
+            self._hover_annot.set_visible(True)
+        else:
+            self._hover_annot.set_visible(False)
+        if self._canvas:
+            self._canvas.draw_idle()
+
+    def _on_chart_click(self, event):
+        """우클릭 시 클릭 위치에서 가장 가까운 데이터 포인트를 제거."""
+        if event.button != 3 or not event.inaxes:
+            return
+        if event.xdata is None or event.ydata is None:
+            return
+        self._remove_nearest_point(event.xdata, event.ydata)
+
+    def _remove_nearest_point(self, click_x: float, click_y: float):
+        if self._grouped is None or self._ax is None:
+            return
+
+        log_scale = self._log_var.get()
+        try:
+            click_disp = self._ax.transData.transform([click_x, click_y])
+        except Exception:
+            return
+
+        best_dist = float('inf')
+        best_param = None
+        best_filtered_idx = None
+
+        for param_key, data in self._get_filtered_grouped().items():
+            y_arr = np.abs(data["y"]) if log_scale else data["y"]
+            for i, (x, y) in enumerate(zip(data["x"], y_arr)):
+                if log_scale and y <= 0:
+                    continue
+                try:
+                    pt_disp = self._ax.transData.transform([x, y])
+                    dist = np.hypot(pt_disp[0] - click_disp[0], pt_disp[1] - click_disp[1])
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_param = param_key
+                        best_filtered_idx = i
+                except Exception:
+                    continue
+
+        if best_dist > _CLICK_THRESHOLD_PX or best_param is None:
+            return
+
+        orig_idx = self._filtered_to_original_idx(best_param, best_filtered_idx)
+        if orig_idx < 0:
+            return
+
+        self._excluded.setdefault(best_param, set()).add(orig_idx)
+        self._log(f"우클릭 제거: 파라미터 {self._format_val(best_param)}V → 인덱스 {orig_idx}")
+        self._update_outlier_label()
+        self._update_outlier_data_preview()
+        self._draw_chart()
+
+    # ── 엑셀 저장 ────────────────────────────────────────────────
 
     def _export_excel(self):
         if self._grouped is None or self._fig is None:
@@ -636,13 +706,15 @@ class _CurveTab(tk.Frame):
         try:
             log_scale = self._log_var.get()
             xlim, ylim = self._parse_limits()
-            
             self._do_export(self._grouped, self._fig, save_path, log_scale, xlim, ylim)
             self._log(f"✅ 저장 완료: {save_path}")
             self._status_var.set("✅ 엑셀 저장 완료")
             if messagebox.askyesno("저장 완료",
                                     f"파일이 저장되었습니다.\n{save_path}\n\n지금 파일을 여시겠습니까?"):
-                os.startfile(save_path) if sys.platform == "win32" else os.system(f"open '{save_path}'")
+                if sys.platform == "win32":
+                    os.startfile(save_path)
+                else:
+                    os.system(f"open '{save_path}'")
         except Exception as e:
             self._log(f"❌ 저장 오류: {e}")
             messagebox.showerror("저장 오류", str(e))
@@ -692,7 +764,7 @@ class TransferCurveTab(_CurveTab):
             grouped, log_scale=log_scale,
             title="TFT Transfer Curve  (Vgs - Id)",
             xlim=xlim, ylim=ylim,
-            ref_grouped=self._ref_grouped
+            ref_grouped=self._ref_grouped,
         )
 
     def _do_export(self, grouped, fig, save_path, log_scale, xlim, ylim):
@@ -718,7 +790,7 @@ class OutputCurveTab(_CurveTab):
             grouped, log_scale=log_scale,
             title="TFT Output Curve  (Vd - Id)",
             xlim=xlim, ylim=ylim,
-            ref_grouped=self._ref_grouped
+            ref_grouped=self._ref_grouped,
         )
 
     def _do_export(self, grouped, fig, save_path, log_scale, xlim, ylim):
@@ -733,119 +805,63 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("TFT Curve Analyzer  ─  SmartSpice 시뮬레이션 결과 분석")
-        self.geometry("1400x800")
-        self.minsize(960, 620)
+        self.geometry("1400x820")
+        self.minsize(960, 640)
         self.configure(bg=BG_DARK)
 
-        # 아이콘 없으면 무시
         try:
             self.iconbitmap(default="")
         except Exception:
             pass
 
-        self._build_menu()
         self._build_tabs()
-
-    def _build_menu(self):
-        menubar = tk.Menu(self, bg=BG_PANEL, fg=FG_TEXT,
-                          activebackground=ACCENT_BLUE, activeforeground="white",
-                          relief="flat", bd=0)
-        file_menu = tk.Menu(menubar, tearoff=False,
-                            bg=BG_PANEL, fg=FG_TEXT,
-                            activebackground=ACCENT_BLUE, activeforeground="white")
-        file_menu.add_command(label="종료", command=self.destroy)
-        menubar.add_cascade(label="파일", menu=file_menu)
-
-        help_menu = tk.Menu(menubar, tearoff=False,
-                            bg=BG_PANEL, fg=FG_TEXT,
-                            activebackground=ACCENT_BLUE, activeforeground="white")
-        help_menu.add_command(label="사용 방법", command=self._show_help)
-        help_menu.add_command(label="정보", command=self._show_about)
-        menubar.add_cascade(label="도움말", menu=help_menu)
-        self.config(menu=menubar)
+        self._build_contact_bar()
 
     def _build_tabs(self):
-        style = ttk.Style()
-        style.theme_use("clam")
-        style.configure("TNotebook",
-                         background=BG_DARK, borderwidth=0, padding=0)
-        style.configure("TNotebook.Tab",
-                         background=BG_PANEL,
-                         foreground=FG_MUTED,
-                         font=("Segoe UI", 11),
-                         padding=[20, 10],
-                         borderwidth=0)
-        style.map("TNotebook.Tab",
-                  background=[("selected", BG_ACCENT)],
-                  foreground=[("selected", FG_TEXT)])
+        # 고정 높이 커스텀 탭 바 — ttk.Notebook 대신 사용하여 탭 전환 시 크기 변화 방지
+        tab_bar = tk.Frame(self, bg=BG_PANEL, height=48)
+        tab_bar.pack(fill="x", side="top")
+        tab_bar.pack_propagate(False)
 
-        nb = ttk.Notebook(self)
-        nb.pack(fill="both", expand=True)
+        content = tk.Frame(self, bg=BG_DARK)
+        content.pack(fill="both", expand=True)
 
-        self._tc_tab = TransferCurveTab(nb)
-        self._oc_tab = OutputCurveTab(nb)
+        self._tc_tab = TransferCurveTab(content)
+        self._oc_tab = OutputCurveTab(content)
+        self._tc_tab.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self._oc_tab.place(relx=0, rely=0, relwidth=1, relheight=1)
 
-        nb.add(self._tc_tab, text="  📈  Transfer Curve  ")
-        nb.add(self._oc_tab, text="  📉  Output Curve  ")
-
-    def _show_help(self):
-        win = tk.Toplevel(self)
-        win.title("사용 방법")
-        win.configure(bg=BG_PANEL)
-        win.geometry("640x540")
-        win.resizable(False, False)
-        help_text = """
-        TFT Curve Analyzer  사용 방법
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        
-        📈 Transfer Curve 탭
-          • 입력 데이터 열 순서: A(무시), B=Vg, C=Vd, D=Id
-          • Vd 값별로 Vgs-Id 곡선이 그려집니다.
-          • 데이터 시작 행은 첫 숫자 등장 행부터 자동 감지됩니다.
-          • Y축 로그 스케일 권장 (Id 값이 매우 작은 경우)
-        
-        📉 Output Curve 탭
-          • 입력 데이터 열 순서: A(무시), B=Vd, C=Vg, D=Id
-          • Vg 값별로 Vd-Id 곡선이 그려집니다.
-          • 데이터 시작 행은 첫 숫자 등장 행부터 자동 감지됩니다.
-        
-        🤝 비교 분석 기능 (R-squared)
-          • '메인 데이터'와 함께 '비교 데이터(Ref)'를 추가 업로드하세요.
-          • 동일 조건(동일한 Vd 혹은 Vg) 데이터 곡선이 점선으로 오버레이 표시됩니다.
-          • 두 곡선의 일치 수준 지표(R²)가 범례에 포함되어 표시됩니다.
-          
-        💾 결과 저장
-          • '엑셀로 저장' 버튼으로 결과 파일 생성
-          • Raw Data 시트: 파라미터별 정렬된 데이터
-          • Chart 시트: 차트 이미지 고해상도 포함
-        
-        ⚠️  주의사항
-          • 엑셀 파일(.xls, .xlsx) 및 CSV 파일(.csv) 형식 모두 지원합니다.
-          • Vd/Vg 조건이 5개 미만인 이상치(Noise)는 렌더링에서 자동 제외됩니다.
-        """
-        txt = tk.Text(win, bg=BG_PANEL, fg=FG_TEXT, font=("Segoe UI", 10),
-                      relief="flat", bd=8, wrap="word")
-        txt.insert("1.0", textwrap.dedent(help_text).strip())
-        txt.config(state="disabled")
-        txt.pack(fill="both", expand=True, padx=16, pady=16)
-        tk.Button(win, text="닫기", command=win.destroy,
-                  **BTN_STYLE_SEC).pack(pady=8)
-
-    def _show_about(self):
-        messagebox.showinfo(
-            "정보",
-            "TFT Curve Analyzer v1.1\n\n"
-            "SmartSpice TFT 시뮬레이션 데이터를\n"
-            "Transfer Curve / Output Curve로 분석 및 레퍼런스(R²) 비교하는 도구입니다.\n\n"
-            "제작: 2026"
+        self._btn_tc = tk.Button(
+            tab_bar, text="  📈  Transfer Curve  ",
+            font=("Segoe UI", 11), relief="flat", bd=0, padx=20,
+            cursor="hand2", command=lambda: self._switch_tab(self._tc_tab),
         )
+        self._btn_oc = tk.Button(
+            tab_bar, text="  📉  Output Curve  ",
+            font=("Segoe UI", 11), relief="flat", bd=0, padx=20,
+            cursor="hand2", command=lambda: self._switch_tab(self._oc_tab),
+        )
+        self._btn_tc.pack(side="left", ipady=12)
+        self._btn_oc.pack(side="left", ipady=12)
 
+        self._switch_tab(self._tc_tab)
 
-# ══════════════════════════════════════════════════════════════════
-#   진입점
-# ══════════════════════════════════════════════════════════════════
+    def _switch_tab(self, tab):
+        tab.lift()
+        if tab is self._tc_tab:
+            self._btn_tc.config(bg=BG_ACCENT, fg=FG_TEXT)
+            self._btn_oc.config(bg=BG_PANEL, fg=FG_MUTED)
+        else:
+            self._btn_tc.config(bg=BG_PANEL, fg=FG_MUTED)
+            self._btn_oc.config(bg=BG_ACCENT, fg=FG_TEXT)
+
+    def _build_contact_bar(self):
+        bar = tk.Frame(self, bg="#0a0a15", pady=3)
+        bar.pack(side="bottom", fill="x")
+        tk.Label(bar, text="문의사항: dhooonk@lgdisplay.com",
+                 font=("Segoe UI", 8), bg="#0a0a15", fg="#6060a0").pack()
+
 
 if __name__ == "__main__":
     app = App()
     app.mainloop()
-
