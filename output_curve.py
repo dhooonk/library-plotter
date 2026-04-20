@@ -13,14 +13,7 @@ from matplotlib.figure import Figure
 from scipy.interpolate import interp1d
 from sklearn.metrics import r2_score
 
-
-# 차트 렌더링에 사용될 컬러 팔레트 (최대 20개의 Vg 값 지원, 넘어가면 순환)
-_COLORS = [
-    "#E63946", "#2196F3", "#2ecc71", "#FF9800", "#9C27B0",
-    "#00BCD4", "#FF5722", "#607D8B", "#8BC34A", "#F44336",
-    "#3F51B5", "#009688", "#CDDC39", "#795548", "#FFC107",
-    "#673AB7", "#03A9F4", "#4CAF50", "#FF5252", "#1DE9B6",
-]
+from transfer_curve import _COLORS, _format_val, _style_axes
 
 
 def create_output_figure(
@@ -135,25 +128,3 @@ def create_output_figure(
     return fig
 
 
-def _format_val(v: float) -> str:
-    """
-    소수점이 ".0"으로 끝나는 경우 정수형(str)으로 표시하고,
-    그 외의 경우 소수 셋업 자리까지 유효숫자로 처리하여 표시합니다.
-    """
-    if v == int(v):
-        return str(int(v))
-    return f"{v:.3g}"
-
-
-def _style_axes(ax, log_scale: bool):
-    """
-    차트 축과 그리드 선에 다크 테마 색상 및 톤 스타일링을 공통 적용합니다.
-    """
-    ax.tick_params(colors="white", labelsize=9)
-    ax.spines["bottom"].set_color("#555577")
-    ax.spines["left"].set_color("#555577")
-    ax.spines["top"].set_color("#555577")
-    ax.spines["right"].set_color("#555577")
-    ax.grid(True, which="major", linestyle="--", alpha=0.3, color="#aaaacc")
-    if log_scale:
-        ax.grid(True, which="minor", linestyle=":", alpha=0.15, color="#aaaacc")

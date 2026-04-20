@@ -9,18 +9,14 @@ excel_exporter.py
 import io
 import os
 import numpy as np
-import matplotlib
 import matplotlib.pyplot as plt
 from openpyxl import Workbook
 from openpyxl.styles import (
-    Font, PatternFill, Alignment, Border, Side, numbers
+    Font, PatternFill, Alignment, Border, Side
 )
 from openpyxl.utils import get_column_letter
 from openpyxl.drawing.image import Image as XLImage
 from matplotlib.figure import Figure
-
-# 백그라운드에서 그래픽 표출 없이 이미지 인메모리 기록용 환경 설정('Agg')
-matplotlib.use("Agg")  
 
 import output_curve as oc_module
 import transfer_curve as tc_module
