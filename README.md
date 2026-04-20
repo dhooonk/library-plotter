@@ -1,4 +1,4 @@
-# TFT Curve Analyzer
+# Lib. Plotter
 
 > SmartSpice TFT 시뮬레이션 데이터를 자동으로 시각화·비교 분석하는 Python GUI 도구
 

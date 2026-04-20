@@ -804,7 +804,7 @@ class OutputCurveTab(_CurveTab):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("TFT Curve Analyzer  ─  SmartSpice 시뮬레이션 결과 분석")
+        self.title("Lib. Plotter  ─  SmartSpice 시뮬레이션 결과 분석")
         self.geometry("1400x820")
         self.minsize(960, 640)
         self.configure(bg=BG_DARK)
