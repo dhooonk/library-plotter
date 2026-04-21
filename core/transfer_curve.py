@@ -11,8 +11,11 @@ COLORS = [
     "#673AB7", "#03A9F4", "#4CAF50", "#FF5252", "#1DE9B6",
 ]
 
-_DARK_BG = "#1e1e2e"
-_AXES_BG = "#2a2a3e"
+_CHART_BG = "#ffffff"
+_AXES_BG  = "#fafafa"
+_TEXT_CLR = "#1e1e1e"
+_GRID_CLR = "#cccccc"
+_SPINE_CLR = "#bbbbbb"
 
 
 def create_transfer_figure(
@@ -25,7 +28,7 @@ def create_transfer_figure(
     ref_grouped: dict = None,
 ) -> Figure:
     fig, ax = plt.subplots(figsize=figsize, dpi=100)
-    fig.patch.set_facecolor(_DARK_BG)
+    fig.patch.set_facecolor(_CHART_BG)
     ax.set_facecolor(_AXES_BG)
 
     for i, (vd, data) in enumerate(sorted(grouped_data.items())):
@@ -48,18 +51,17 @@ def create_transfer_figure(
     if ylim:
         ax.set_ylim(ylim)
 
-    ax.set_xlabel("Vgs (V)", color="white", fontsize=12, labelpad=8)
-    ax.set_ylabel("|Id| (A)" if log_scale else "Id (A)", color="white", fontsize=12, labelpad=8)
-    ax.set_title(title, color="white", fontsize=14, fontweight="bold", pad=12)
-    ax.legend(loc="best", fontsize=9, framealpha=0.3,
-              facecolor=_DARK_BG, edgecolor="#555577", labelcolor="white")
+    ax.set_xlabel("Vgs (V)", color=_TEXT_CLR, fontsize=12, labelpad=8)
+    ax.set_ylabel("|Id| (A)" if log_scale else "Id (A)", color=_TEXT_CLR, fontsize=12, labelpad=8)
+    ax.set_title(title, color=_TEXT_CLR, fontsize=14, fontweight="bold", pad=12)
+    ax.legend(loc="best", fontsize=9, framealpha=0.8,
+              facecolor="#ffffff", edgecolor=_SPINE_CLR, labelcolor=_TEXT_CLR)
     plt.tight_layout(pad=1.5)
     return fig
 
 
 def _plot_ref_curve(ax, ref_data: dict, main_x, main_y, color: str,
                     log_scale: bool, label: str) -> str:
-    """Ref 곡선을 점선으로 오버레이하고 R² 값 문자열 반환. 보간 실패 시 빈 문자열."""
     try:
         f_interp = interp1d(ref_data["x"], np.abs(ref_data["y"]),
                             kind='linear', bounds_error=False, fill_value=np.nan)
@@ -77,10 +79,10 @@ def _plot_ref_curve(ax, ref_data: dict, main_x, main_y, color: str,
         if log_scale:
             mask = ref_y > 0
             ax.semilogy(ref_data["x"][mask], ref_y[mask], color=color, linewidth=2,
-                        linestyle="--", alpha=0.5, label=label)
+                        linestyle="--", alpha=0.6, label=label)
         else:
             ax.plot(ref_data["x"], ref_y, color=color, linewidth=2,
-                    linestyle="--", alpha=0.5, label=label)
+                    linestyle="--", alpha=0.6, label=label)
         return r2_str
     except Exception:
         return ""
@@ -103,9 +105,9 @@ def format_val(v: float) -> str:
 
 
 def _style_axes(ax, log_scale: bool):
-    ax.tick_params(colors="white", labelsize=9)
+    ax.tick_params(colors=_TEXT_CLR, labelsize=9)
     for spine in ax.spines.values():
-        spine.set_color("#555577")
-    ax.grid(True, which="major", linestyle="--", alpha=0.3, color="#aaaacc")
+        spine.set_color(_SPINE_CLR)
+    ax.grid(True, which="major", linestyle="--", alpha=0.5, color=_GRID_CLR)
     if log_scale:
-        ax.grid(True, which="minor", linestyle=":", alpha=0.15, color="#aaaacc")
+        ax.grid(True, which="minor", linestyle=":", alpha=0.25, color=_GRID_CLR)

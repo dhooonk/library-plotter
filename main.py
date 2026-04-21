@@ -1,6 +1,5 @@
 import os
 import sys
-import textwrap
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -18,36 +17,36 @@ import utils.excel_exporter as excel_exporter
 
 
 # ══════════════════════════════════════════════════════════════════
-#   스타일 상수
+#   스타일 상수 (라이트 테마)
 # ══════════════════════════════════════════════════════════════════
-BG_DARK       = "#12121e"
-BG_PANEL      = "#1e1e2e"
-BG_CARD       = "#252535"
-BG_ACCENT     = "#2e2e45"
-FG_TEXT       = "#e0e0f0"
-FG_MUTED      = "#9090b0"
-ACCENT_BLUE   = "#4a9eff"
-ACCENT_GREEN  = "#3de0a0"
-ACCENT_RED    = "#ff5c6a"
+BG_DARK       = "#f0f0f0"
+BG_PANEL      = "#ffffff"
+BG_CARD       = "#f8f8f8"
+BG_ACCENT     = "#e4e4e4"
+FG_TEXT       = "#1e1e1e"
+FG_MUTED      = "#777777"
+ACCENT_BLUE   = "#1565c0"
+ACCENT_GREEN  = "#2e7d32"
+ACCENT_RED    = "#c62828"
 FONT_TITLE    = ("Segoe UI", 15, "bold")
 FONT_LABEL    = ("Segoe UI", 10)
 FONT_SMALL    = ("Segoe UI", 9)
 FONT_MONO     = ("Consolas", 9)
 BTN_STYLE_PRI = {
     "bg": ACCENT_BLUE, "fg": "#ffffff",
-    "activebackground": "#3080d0", "activeforeground": "#ffffff",
+    "activebackground": "#0d47a1", "activeforeground": "#ffffff",
     "relief": "flat", "bd": 0, "padx": 18, "pady": 8,
     "font": ("Segoe UI", 10, "bold"), "cursor": "hand2",
 }
 BTN_STYLE_SEC = {
     "bg": BG_ACCENT, "fg": FG_TEXT,
-    "activebackground": "#3a3a55", "activeforeground": FG_TEXT,
+    "activebackground": "#d0d0d0", "activeforeground": FG_TEXT,
     "relief": "flat", "bd": 0, "padx": 14, "pady": 7,
     "font": ("Segoe UI", 10), "cursor": "hand2",
 }
 BTN_STYLE_GRN = {
-    "bg": "#1a7a5a", "fg": "#ffffff",
-    "activebackground": "#13604a", "activeforeground": "#ffffff",
+    "bg": "#388e3c", "fg": "#ffffff",
+    "activebackground": "#2e7d32", "activeforeground": "#ffffff",
     "relief": "flat", "bd": 0, "padx": 18, "pady": 8,
     "font": ("Segoe UI", 10, "bold"), "cursor": "hand2",
 }
@@ -64,8 +63,8 @@ def _labeled_entry(parent, label_text, default="", width=40):
     tk.Label(frm, text=label_text, bg=BG_CARD, fg=FG_MUTED,
              font=FONT_SMALL, anchor="w").pack(anchor="w", padx=2)
     ent = tk.Entry(frm, font=FONT_MONO, width=width,
-                   bg=BG_ACCENT, fg=FG_TEXT, insertbackground=FG_TEXT,
-                   relief="flat", bd=4)
+                   bg="#ffffff", fg=FG_TEXT, insertbackground=FG_TEXT,
+                   relief="solid", bd=1)
     ent.insert(0, default)
     ent.pack(fill="x", padx=2)
     return frm, ent
@@ -75,8 +74,8 @@ def _scrollable_text(parent, height=6):
     frm = tk.Frame(parent, bg=BG_CARD)
     sb = tk.Scrollbar(frm, orient="vertical")
     txt = tk.Text(frm, height=height, font=FONT_SMALL,
-                  bg="#0d0d1a", fg="#a0d0ff", insertbackground=FG_TEXT,
-                  relief="flat", bd=4, yscrollcommand=sb.set)
+                  bg="#ffffff", fg="#333333", insertbackground=FG_TEXT,
+                  relief="solid", bd=1, yscrollcommand=sb.set)
     sb.config(command=txt.yview)
     sb.pack(side="right", fill="y")
     txt.pack(side="left", fill="both", expand=True)
@@ -151,10 +150,10 @@ class _CurveTab(tk.Frame):
 
         self._build_left(left)
 
-        sb_frame = tk.Frame(left_outer, bg="#0d0d20", pady=6)
+        sb_frame = tk.Frame(left_outer, bg=BG_ACCENT, pady=6)
         sb_frame.grid(row=1, column=0, columnspan=2, sticky="ew")
         tk.Label(sb_frame, textvariable=self._status_var, font=FONT_SMALL,
-                 bg="#0d0d20", fg=FG_MUTED, wraplength=280,
+                 bg=BG_ACCENT, fg=FG_MUTED, wraplength=280,
                  justify="left").pack(padx=12, anchor="w")
 
         right = tk.Frame(self, bg=BG_DARK)
@@ -166,12 +165,12 @@ class _CurveTab(tk.Frame):
     def _build_left(self, parent):
         parent.columnconfigure(0, weight=1)
 
-        hdr = tk.Frame(parent, bg="#0d0d20", pady=12)
+        hdr = tk.Frame(parent, bg=BG_PANEL, pady=12)
         hdr.grid(row=0, column=0, sticky="ew")
         tk.Label(hdr, text=self.MODE_LABEL, font=FONT_TITLE,
-                 bg="#0d0d20", fg=ACCENT_BLUE).pack(padx=16)
+                 bg=BG_PANEL, fg=ACCENT_BLUE).pack(padx=16)
         tk.Label(hdr, text="SmartSpice 시뮬레이션 결과 분석기",
-                 font=FONT_SMALL, bg="#0d0d20", fg=FG_MUTED).pack(padx=16)
+                 font=FONT_SMALL, bg=BG_PANEL, fg=FG_MUTED).pack(padx=16)
 
         cards = tk.Frame(parent, bg=BG_PANEL)
         cards.grid(row=1, column=0, sticky="ew", padx=10, pady=8)
@@ -210,28 +209,29 @@ class _CurveTab(tk.Frame):
 
         tk.Label(ax_frm, text="X축 범위 (Min - Max):", bg=BG_CARD, fg=FG_MUTED,
                  font=FONT_SMALL).grid(row=0, column=0, columnspan=3, sticky="w")
-        tk.Entry(ax_frm, textvariable=self._xlim_min, width=10, bg=BG_ACCENT,
-                 fg=FG_TEXT, relief="flat", bd=3).grid(row=1, column=0, padx=(0, 4), pady=2)
+        tk.Entry(ax_frm, textvariable=self._xlim_min, width=10, bg="#ffffff",
+                 fg=FG_TEXT, relief="solid", bd=1).grid(row=1, column=0, padx=(0, 4), pady=2)
         tk.Label(ax_frm, text="~", bg=BG_CARD, fg=FG_TEXT).grid(row=1, column=1)
-        tk.Entry(ax_frm, textvariable=self._xlim_max, width=10, bg=BG_ACCENT,
-                 fg=FG_TEXT, relief="flat", bd=3).grid(row=1, column=2, padx=(4, 0), pady=2)
+        tk.Entry(ax_frm, textvariable=self._xlim_max, width=10, bg="#ffffff",
+                 fg=FG_TEXT, relief="solid", bd=1).grid(row=1, column=2, padx=(4, 0), pady=2)
 
         tk.Label(ax_frm, text="Y축 범위 (Min - Max):", bg=BG_CARD, fg=FG_MUTED,
                  font=FONT_SMALL).grid(row=2, column=0, columnspan=3, sticky="w", pady=(6, 0))
-        tk.Entry(ax_frm, textvariable=self._ylim_min, width=10, bg=BG_ACCENT,
-                 fg=FG_TEXT, relief="flat", bd=3).grid(row=3, column=0, padx=(0, 4), pady=2)
+        tk.Entry(ax_frm, textvariable=self._ylim_min, width=10, bg="#ffffff",
+                 fg=FG_TEXT, relief="solid", bd=1).grid(row=3, column=0, padx=(0, 4), pady=2)
         tk.Label(ax_frm, text="~", bg=BG_CARD, fg=FG_TEXT).grid(row=3, column=1)
-        tk.Entry(ax_frm, textvariable=self._ylim_max, width=10, bg=BG_ACCENT,
-                 fg=FG_TEXT, relief="flat", bd=3).grid(row=3, column=2, padx=(4, 0), pady=2)
+        tk.Entry(ax_frm, textvariable=self._ylim_max, width=10, bg="#ffffff",
+                 fg=FG_TEXT, relief="solid", bd=1).grid(row=3, column=2, padx=(4, 0), pady=2)
 
         tk.Button(oc, text="🔄 차트 새로 그리기 (적용)", command=self._on_option_change,
-                  bg="#444466", fg="white", activebackground="#555577",
-                  relief="flat", bd=0, pady=4).pack(fill="x", padx=8, pady=(2, 4))
+                  bg=BG_ACCENT, fg=FG_TEXT, activebackground="#d0d0d0",
+                  activeforeground=FG_TEXT, relief="flat", bd=0, pady=5,
+                  font=("Segoe UI", 9), cursor="hand2").pack(fill="x", padx=8, pady=(2, 4))
 
         # 이상치 삭제 카드
         outlier_card = self._make_card(cards, "🗑️  이상치 삭제", row=2)
         tk.Label(outlier_card,
-                 text="파라미터 선택 시 데이터 목록 표시\n인덱스 입력 후 삭제 또는 차트에서 우클릭",
+                 text="파라미터 선택 후 목록에서 행을 클릭하여 선택\n(Ctrl+클릭 다중 선택, 차트 우클릭도 가능)",
                  font=FONT_SMALL, bg=BG_CARD, fg=FG_MUTED,
                  justify="left", anchor="w", wraplength=260).pack(fill="x", padx=8, pady=(0, 4))
 
@@ -247,35 +247,38 @@ class _CurveTab(tk.Frame):
         self._outlier_param_combo.grid(row=0, column=1, sticky="ew", pady=2)
         self._outlier_param_combo.bind("<<ComboboxSelected>>", self._update_outlier_data_preview)
 
-        tk.Label(sel_frm, text="데이터 인덱스:", bg=BG_CARD, fg=FG_MUTED,
-                 font=FONT_SMALL).grid(row=1, column=0, sticky="w", padx=(0, 4))
-        self._outlier_idx_entry = tk.Entry(sel_frm, width=14, bg=BG_ACCENT, fg=FG_TEXT,
-                                           insertbackground=FG_TEXT, relief="flat", bd=3,
-                                           font=FONT_MONO)
-        self._outlier_idx_entry.grid(row=1, column=1, sticky="ew", pady=2)
-        tk.Label(sel_frm, text="  (쉼표 구분 다중 입력 가능)",
-                 bg=BG_CARD, fg=FG_MUTED, font=("Segoe UI", 8)).grid(
-                 row=2, column=0, columnspan=2, sticky="w")
-
-        # 인덱스-X-Y 데이터 미리보기 테이블
+        # 데이터 목록 Treeview
         preview_outer = tk.Frame(outlier_card, bg=BG_CARD)
         preview_outer.pack(fill="x", padx=8, pady=(6, 2))
-        tk.Label(preview_outer, text="데이터 목록 (Idx | X | Y)  ✗=제외됨",
-                 bg=BG_CARD, fg=FG_MUTED, font=FONT_SMALL).pack(anchor="w")
-        preview_scroll = tk.Scrollbar(preview_outer, orient="vertical")
-        self._preview_text = tk.Text(
-            preview_outer, height=6, font=("Consolas", 8),
-            bg="#0d0d1a", fg="#80c0ff", relief="flat", bd=2,
-            state="disabled", yscrollcommand=preview_scroll.set,
+
+        tree_frame = tk.Frame(preview_outer, bg=BG_CARD)
+        tree_frame.pack(fill="x")
+
+        preview_scroll = tk.Scrollbar(tree_frame, orient="vertical")
+        self._preview_tree = ttk.Treeview(
+            tree_frame,
+            columns=("idx", "x", "y", "status"),
+            show="headings",
+            height=6,
+            selectmode="extended",
+            yscrollcommand=preview_scroll.set,
         )
-        preview_scroll.config(command=self._preview_text.yview)
+        self._preview_tree.heading("idx", text="Idx")
+        self._preview_tree.heading("x", text="X")
+        self._preview_tree.heading("y", text="Y")
+        self._preview_tree.heading("status", text="상태")
+        self._preview_tree.column("idx", width=35, anchor="center", stretch=False)
+        self._preview_tree.column("x", width=80, anchor="e", stretch=True)
+        self._preview_tree.column("y", width=90, anchor="e", stretch=True)
+        self._preview_tree.column("status", width=40, anchor="center", stretch=False)
+        preview_scroll.config(command=self._preview_tree.yview)
         preview_scroll.pack(side="right", fill="y")
-        self._preview_text.pack(side="left", fill="x", expand=True)
+        self._preview_tree.pack(side="left", fill="x", expand=True)
 
         btn_frm = tk.Frame(outlier_card, bg=BG_CARD)
         btn_frm.pack(fill="x", padx=8, pady=(4, 2))
         tk.Button(btn_frm, text="✂️ 선택 삭제", command=self._remove_outlier,
-                  bg=ACCENT_RED, fg="white", activebackground="#cc3a47",
+                  bg=ACCENT_RED, fg="white", activebackground="#b71c1c",
                   relief="flat", bd=0, padx=10, pady=5,
                   font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="left", padx=(0, 4))
         tk.Button(btn_frm, text="↩ 전체 복원", command=self._reset_outliers,
@@ -335,7 +338,9 @@ class _CurveTab(tk.Frame):
                  relx=0.5, rely=0.5, anchor="center")
 
     def _make_card(self, parent, title, row):
-        frm = tk.Frame(parent, bg=BG_CARD, bd=0, padx=4, pady=6)
+        frm = tk.Frame(parent, bg=BG_CARD, bd=0, padx=4, pady=6,
+                       relief="solid", highlightthickness=1,
+                       highlightbackground=BG_ACCENT)
         frm.grid(row=row, column=0, sticky="ew", pady=5)
         frm.columnconfigure(0, weight=1)
         tk.Label(frm, text=title, font=("Segoe UI", 10, "bold"),
@@ -368,24 +373,23 @@ class _CurveTab(tk.Frame):
             self._update_outlier_data_preview()
 
     def _update_outlier_data_preview(self, event=None):
-        """선택된 파라미터의 (인덱스, X, Y) 목록을 미리보기에 표시. ✗는 제외된 항목."""
-        self._preview_text.config(state="normal")
-        self._preview_text.delete("1.0", "end")
+        for item in self._preview_tree.get_children():
+            self._preview_tree.delete(item)
 
         param_key = self._get_selected_param_key()
         if param_key is None or self._grouped is None:
-            self._preview_text.config(state="disabled")
             return
 
         data = self._grouped[param_key]
         excluded = self._excluded.get(param_key, set())
-        self._preview_text.insert("end", f"{'Idx':>4}  {'X':>12}  {'Y':>12}\n")
-        self._preview_text.insert("end", "─" * 34 + "\n")
         for i, (x, y) in enumerate(zip(data["x"], data["y"])):
-            marker = " ✗" if i in excluded else "  "
-            self._preview_text.insert("end", f"{i:>4}{marker}  {x:>12.4g}  {y:>12.3e}\n")
-
-        self._preview_text.config(state="disabled")
+            status = "제외" if i in excluded else ""
+            tag = "excluded" if i in excluded else "active"
+            self._preview_tree.insert(
+                "", "end", iid=str(i),
+                values=(i, f"{x:.4g}", f"{y:.3e}", status),
+                tags=(tag,),
+            )
 
     def _get_selected_param_key(self):
         if self._grouped is None:
@@ -401,24 +405,19 @@ class _CurveTab(tk.Frame):
         if param_key is None:
             messagebox.showwarning("선택 오류", "먼저 분석을 실행하고 파라미터를 선택하세요.")
             return
-        idx_str = self._outlier_idx_entry.get().strip()
-        if not idx_str:
-            messagebox.showwarning("인덱스 없음", "삭제할 데이터 인덱스를 입력하세요.\n예: 0, 3, 5")
-            return
-        try:
-            indices = {int(s.strip()) for s in idx_str.split(",") if s.strip()}
-        except ValueError:
-            messagebox.showerror("입력 오류", "인덱스는 정수여야 합니다. 예: 0, 3, 5")
+        selected_iids = self._preview_tree.selection()
+        if not selected_iids:
+            messagebox.showwarning("선택 없음", "삭제할 데이터를 목록에서 선택해주세요.\n(클릭 또는 Ctrl+클릭으로 다중 선택)")
             return
 
-        data_len = len(self._grouped[param_key]["x"])
-        invalid = [i for i in indices if i < 0 or i >= data_len]
-        if invalid:
-            messagebox.showerror("범위 오류", f"유효 범위(0~{data_len-1}) 벗어난 인덱스: {invalid}")
+        already_excluded = self._excluded.get(param_key, set())
+        new_indices = {int(iid) for iid in selected_iids} - already_excluded
+        if not new_indices:
+            messagebox.showinfo("알림", "선택한 항목이 이미 제외되어 있습니다.")
             return
 
-        self._excluded.setdefault(param_key, set()).update(indices)
-        self._log(f"파라미터 {self._format_val(param_key)}V → 인덱스 {sorted(indices)} 제외")
+        self._excluded.setdefault(param_key, set()).update(new_indices)
+        self._log(f"파라미터 {self._format_val(param_key)}V → 인덱스 {sorted(new_indices)} 제외")
         self._update_outlier_label()
         self._update_outlier_data_preview()
         self._draw_chart()
@@ -452,7 +451,6 @@ class _CurveTab(tk.Frame):
         return filtered
 
     def _filtered_to_original_idx(self, param_key, filtered_idx: int) -> int:
-        """필터링된 배열의 인덱스를 원본 grouped 배열의 인덱스로 변환."""
         excluded = self._excluded.get(param_key, set())
         count = 0
         for orig_idx in range(len(self._grouped[param_key]["x"])):
@@ -481,7 +479,6 @@ class _CurveTab(tk.Frame):
         return xlim, ylim
 
     def _auto_fill_axis_limits(self):
-        """파싱 완료 직후 실제 데이터 범위로 축 Min/Max 필드를 자동으로 채움."""
         if not self._grouped:
             return
         all_x = np.concatenate([d["x"] for d in self._grouped.values()])
@@ -596,11 +593,10 @@ class _CurveTab(tk.Frame):
         self._fig = self._create_figure(display_grouped, log_scale, xlim, ylim)
         self._ax = self._fig.axes[0]
 
-        # 마우스 호버 좌표 어노테이션
         self._hover_annot = self._ax.annotate(
             "", xy=(0, 0), xytext=(12, 12), textcoords="offset points",
-            bbox=dict(boxstyle="round,pad=0.3", fc="#1e1e2e", ec="#4a9eff", alpha=0.9),
-            fontsize=8.5, color="#e0e0f0", annotation_clip=False,
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=ACCENT_BLUE, alpha=0.92),
+            fontsize=8.5, color=FG_TEXT, annotation_clip=False,
             visible=False, zorder=10,
         )
 
@@ -609,10 +605,10 @@ class _CurveTab(tk.Frame):
         canvas_widget.configure(bg=BG_DARK)
         canvas_widget.pack(fill="both", expand=True)
 
-        toolbar_frame = tk.Frame(self._chart_frame, bg="#1a1a2e")
+        toolbar_frame = tk.Frame(self._chart_frame, bg=BG_PANEL)
         toolbar_frame.pack(fill="x", side="bottom")
         self._toolbar = NavigationToolbar2Tk(self._canvas, toolbar_frame)
-        self._toolbar.config(background="#1a1a2e")
+        self._toolbar.config(background=BG_PANEL)
         self._toolbar.update()
 
         self._canvas.mpl_connect('motion_notify_event', self._on_chart_hover)
@@ -627,7 +623,6 @@ class _CurveTab(tk.Frame):
         self._log(msg)
 
     def _on_chart_hover(self, event):
-        """마우스 위치의 데이터 좌표를 차트 어노테이션으로 실시간 표시."""
         if self._hover_annot is None:
             return
         if event.inaxes and event.xdata is not None and event.ydata is not None:
@@ -642,7 +637,6 @@ class _CurveTab(tk.Frame):
             self._canvas.draw_idle()
 
     def _on_chart_click(self, event):
-        """우클릭 시 클릭 위치에서 가장 가까운 데이터 포인트를 제거."""
         if event.button != 3 or not event.inaxes:
             return
         if event.xdata is None or event.ydata is None:
@@ -750,7 +744,7 @@ class _CurveTab(tk.Frame):
 # ══════════════════════════════════════════════════════════════════
 
 class TransferCurveTab(_CurveTab):
-    MODE_LABEL  = "🔵  Transfer Curve"
+    MODE_LABEL  = "📈  Transfer Curve"
     PARAM_LABEL = "Vd"
     X_LABEL     = "Vg"
     DEFAULT_LOG = True
@@ -776,7 +770,7 @@ class TransferCurveTab(_CurveTab):
 # ══════════════════════════════════════════════════════════════════
 
 class OutputCurveTab(_CurveTab):
-    MODE_LABEL  = "🟢  Output Curve"
+    MODE_LABEL  = "📉  Output Curve"
     PARAM_LABEL = "Vg"
     X_LABEL     = "Vd"
     DEFAULT_LOG = False
@@ -804,7 +798,7 @@ class OutputCurveTab(_CurveTab):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Lib. Plotter  ─  SmartSpice 시뮬레이션 결과 분석")
+        self.title("tr-curve-plotter  ─  SmartSpice 시뮬레이션 결과 분석")
         self.geometry("1400x820")
         self.minsize(960, 640)
         self.configure(bg=BG_DARK)
@@ -814,14 +808,40 @@ class App(tk.Tk):
         except Exception:
             pass
 
+        self._apply_ttk_style()
         self._build_tabs()
         self._build_contact_bar()
 
+    def _apply_ttk_style(self):
+        style = ttk.Style(self)
+        style.theme_use("clam")
+        style.configure("Treeview",
+                        background=BG_CARD,
+                        foreground=FG_TEXT,
+                        rowheight=22,
+                        fieldbackground=BG_CARD,
+                        borderwidth=1,
+                        font=("Consolas", 8))
+        style.configure("Treeview.Heading",
+                        background=BG_ACCENT,
+                        foreground=FG_TEXT,
+                        relief="flat",
+                        font=("Segoe UI", 8, "bold"))
+        style.map("Treeview",
+                  background=[("selected", ACCENT_BLUE)],
+                  foreground=[("selected", "#ffffff")])
+        style.configure("TCombobox",
+                        fieldbackground="#ffffff",
+                        background=BG_ACCENT,
+                        foreground=FG_TEXT)
+
     def _build_tabs(self):
-        # 고정 높이 커스텀 탭 바 — ttk.Notebook 대신 사용하여 탭 전환 시 크기 변화 방지
         tab_bar = tk.Frame(self, bg=BG_PANEL, height=48)
         tab_bar.pack(fill="x", side="top")
         tab_bar.pack_propagate(False)
+
+        # 하단 구분선
+        tk.Frame(self, bg=BG_ACCENT, height=1).pack(fill="x", side="top")
 
         content = tk.Frame(self, bg=BG_DARK)
         content.pack(fill="both", expand=True)
@@ -856,10 +876,10 @@ class App(tk.Tk):
             self._btn_oc.config(bg=BG_ACCENT, fg=FG_TEXT)
 
     def _build_contact_bar(self):
-        bar = tk.Frame(self, bg="#0a0a15", pady=3)
+        bar = tk.Frame(self, bg=BG_ACCENT, pady=3)
         bar.pack(side="bottom", fill="x")
         tk.Label(bar, text="문의사항: dhooonk@lgdisplay.com",
-                 font=("Segoe UI", 8), bg="#0a0a15", fg="#6060a0").pack()
+                 font=("Segoe UI", 8), bg=BG_ACCENT, fg=FG_MUTED).pack(side="right", padx=12)
 
 
 if __name__ == "__main__":

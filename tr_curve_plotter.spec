@@ -51,7 +51,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='Lib_Plotter',  # 생성될 실행 파일 이름 (.exe)
+    name='tr_curve_plotter',  # 생성될 실행 파일 이름 (.exe)
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -81,5 +81,5 @@ exe = EXE(
 #     strip=False,
 #     upx=True,
 #     upx_exclude=[],
-#     name='Lib_Plotter',
+#     name='tr_curve_plotter',
 # )
