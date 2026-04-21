@@ -149,6 +149,7 @@ class _CurveTab(tk.Frame):
         left.bind("<MouseWheel>", self._on_mousewheel)
 
         self._build_left(left)
+        self._bind_scroll_recursive(left)
 
         sb_frame = tk.Frame(left_outer, bg=BG_ACCENT, pady=6)
         sb_frame.grid(row=1, column=0, columnspan=2, sticky="ew")
@@ -355,6 +356,11 @@ class _CurveTab(tk.Frame):
 
     def _on_left_canvas_configure(self, event):
         self._left_canvas.itemconfig(self._left_window, width=event.width)
+
+    def _bind_scroll_recursive(self, widget):
+        widget.bind("<MouseWheel>", self._on_mousewheel, add="+")
+        for child in widget.winfo_children():
+            self._bind_scroll_recursive(child)
 
     def _on_mousewheel(self, event):
         if event.delta:
@@ -869,11 +875,15 @@ class App(tk.Tk):
     def _switch_tab(self, tab):
         tab.lift()
         if tab is self._tc_tab:
-            self._btn_tc.config(bg=BG_ACCENT, fg=FG_TEXT)
-            self._btn_oc.config(bg=BG_PANEL, fg=FG_MUTED)
+            self._btn_tc.config(bg=ACCENT_BLUE, fg="#ffffff",
+                                activebackground="#0d47a1", activeforeground="#ffffff")
+            self._btn_oc.config(bg=BG_PANEL, fg=FG_MUTED,
+                                activebackground=BG_ACCENT, activeforeground=FG_TEXT)
         else:
-            self._btn_tc.config(bg=BG_PANEL, fg=FG_MUTED)
-            self._btn_oc.config(bg=BG_ACCENT, fg=FG_TEXT)
+            self._btn_tc.config(bg=BG_PANEL, fg=FG_MUTED,
+                                activebackground=BG_ACCENT, activeforeground=FG_TEXT)
+            self._btn_oc.config(bg=ACCENT_BLUE, fg="#ffffff",
+                                activebackground="#0d47a1", activeforeground="#ffffff")
 
     def _build_contact_bar(self):
         bar = tk.Frame(self, bg=BG_ACCENT, pady=3)
